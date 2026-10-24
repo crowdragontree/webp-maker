@@ -64,6 +64,15 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
   const isWindows=process.platform==='win32';
   assert(reportPath,'WEBP_MAKER_E2E_REPORT is required');
   const started=Date.now();
+  // Checkpoint output allows GitHub to identify the LAST reached stage even
+  // if Electron or an external process becomes unresponsive. A partial report
+  // is never a pass: only the final report sets ok:true.
+  const checkpoint=(stage,detail='')=>{
+    const state={ok:false,stage,detail,elapsedSeconds:Math.round((Date.now()-started)/1000)};
+    fs.writeFileSync(reportPath,JSON.stringify(state,null,2));
+    console.log(`[WebP Maker E2E] ${stage}${detail?' - '+detail:''}`);
+  };
+  checkpoint('starting');
   const nativeExe=isWindows?path.join(toolsDir,'imagemagick','magick.exe'):
     path.join(toolsDir,'imagemagick-linux','AppRun');
   if(!isWindows){
@@ -81,6 +90,7 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
     win.webContents.once('did-finish-load',()=>{clearTimeout(timer);resolve();});
     win.webContents.once('did-fail-load',(_,code,description)=>{clearTimeout(timer);reject(new Error(`UI load ${code}: ${description}`));});
   });
+  checkpoint('loading-two-h264-fixtures');
   // The actual file input fires its normal change event. The regular WebP
   // Maker renderer then probes both MP4s, decodes via HTML5 video, transfers
   // PNG frames through Electron IPC, and calls ImageMagick via WebpMaker.finish.
@@ -107,6 +117,7 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
   const uiQuality=await win.webContents.executeJavaScript(`document.getElementById('wm-quality').value`);
   assert.strictEqual(uiFps,'24','The default FPS changed unexpectedly');
   assert.strictEqual(uiQuality,'80','The default quality changed unexpectedly');
+  checkpoint('converting-two-h264-fixtures');
   await win.webContents.executeJavaScript(`document.getElementById('wm-convert').click()`);
   await waitFor(async()=>win.webContents.executeJavaScript(`(()=>({
     ready:!document.getElementById('wm-result').hidden &&
@@ -116,6 +127,7 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
     status:document.getElementById('wm-progress-title').textContent,
     progress:document.getElementById('wm-progress-detail').textContent
   }))()`),{timeout:360000,label:'real MP4-to-WebP conversion',interval:600});
+  checkpoint('validating-first-webp-output');
   // The only acceptable route is a private ImageMagick downloaded and extracted
   // by the packaged app. A machine-wide ImageMagick is not an adequate test.
   assert(fs.existsSync(nativeExe),'First-run setup did not install portable ImageMagick');
@@ -138,6 +150,7 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
   // Regression for ComfyUI exports: a .mp4 filename containing a VP9/WebM
   // stream with no Duration in its container. Confirm ALL THREE clips move
   // in the final WebP, not just that its header has multiple ANMF frames.
+  checkpoint('loading-three-webm-vp9-fixtures');
   const comfyFixtures=[1,2,3].map(i=>{
     const name=`comfy-webm-${i}.mp4`;
     const file=path.join(appRoot,'tests','fixtures',name);
@@ -205,7 +218,23 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
   assert(freeformChoice.open&&freeformChoice.visible&&freeformChoice.freeformTools,
     `Freeform crop editor did not open: ${JSON.stringify(freeformChoice)}`);
 
+  // Converting a square source into 480x640 asks for user confirmation in
+  // production. The packaged E2E runs with its window HIDDEN, so a native
+  // confirm dialog would hang forever waiting for a nonexistent tester.
+  // A test-only override explicitly accepts that one user choice. Normal
+  // WebP Maker behavior and prompts are never modified by this script.
+  await win.webContents.executeJavaScript(`(()=>{
+    window.__webpMakerE2eConfirmations=[];
+    window.confirm=function(message){
+      window.__webpMakerE2eConfirmations.push(String(message));
+      return true;
+    };
+  })()`);
+  checkpoint('converting-three-vp9-fixtures-with-freeform-crop');
   await win.webContents.executeJavaScript(`document.getElementById('wm-convert').click()`);
+  const confirmations=await win.webContents.executeJavaScript('window.__webpMakerE2eConfirmations');
+  assert(confirmations.some(message=>message.includes('Change output dimensions')),
+    `Expected the square-to-480x640 confirmation to be exercised: ${JSON.stringify(confirmations)}`);
   await waitFor(async()=>win.webContents.executeJavaScript(`(()=>({
     ready:!document.getElementById('wm-result').hidden &&
       document.getElementById('wm-progress-pct').textContent.trim()==='100%',
@@ -213,6 +242,7 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
     status:document.getElementById('wm-progress-title').textContent,
     progress:document.getElementById('wm-progress-detail').textContent
   }))()`),{timeout:360000,label:'three ComfyUI-style video clips to animate with freeform crop',interval:600});
+  checkpoint('validating-three-vp9-clips-animated-webp');
   const secondResult=maker.resultPath();
   assert(secondResult,'No WebP generated from the VP9/WebM videos');
   // Each independent freeform crop must reach the real encoder. Crop keys

@@ -17,6 +17,11 @@ assert(main.includes('updates:check')&&main.includes('updates:install'), 'Electr
 assert(/^\d+\.\d+\.\d+$/.test(require('../package.json').version), 'Update version must use major.minor.patch.');
 assert(typeof require('./e2e-desktop').inspectWebp==='function','WebP validator missing');
 assert(fs.readFileSync(path.join(__dirname,'e2e-desktop.js'),'utf8').includes("['win32','linux'].includes(process.platform)"),'Linux packaged-app E2E support is missing');
+const e2eSource=fs.readFileSync(path.join(__dirname,'e2e-desktop.js'),'utf8');
+assert(e2eSource.includes('window.__webpMakerE2eConfirmations.push(String(message))'),
+  'Packaged E2E may block on hidden dimension-change confirmation dialogs.');
+assert(e2eSource.includes("checkpoint('converting-three-vp9-fixtures-with-freeform-crop')"),
+  'Packaged E2E conversion-stage diagnostics are missing.');
 console.log('Standalone WebP Maker self-test passed');
 require('./metadata-selftest').catch(e=>{console.error(e);process.exitCode=1;});
 
