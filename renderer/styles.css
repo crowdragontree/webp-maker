@@ -195,3 +195,19 @@ body:has(#view-webpmaker.active) .topbar p{margin-top:3px;font-size:12px}
 /* The animated preview itself opens the existing expanded preview. */
 #view-webpmaker #wm-preview{cursor:zoom-in}
 #view-webpmaker #wm-preview:focus-visible{outline:3px solid #cf70d8;outline-offset:-3px}
+
+/* Portable Windows/Linux releases: visible version and in-app update controls. */
+.wm-header-title{min-width:0;flex:1}
+.wm-app-version{display:inline-block;font-size:11px;font-weight:800;color:#f1c6ff;background:#382341;border:1px solid #604078;border-radius:999px;padding:3px 8px;vertical-align:middle;margin-left:4px}
+.wm-update-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:55%}
+.wm-update-tools button{white-space:nowrap;min-height:32px;padding:6px 10px;font-size:11px}
+.wm-update-status{font-size:11px;color:#bba7c8;max-width:285px;line-height:1.35;overflow-wrap:anywhere}
+.wm-update-status[data-phase="available"],.wm-update-status[data-phase="ready"]{color:#92efb9;font-weight:750}
+.wm-update-status[data-phase="error"]{color:#f1b29a}
+.wm-update-status[data-phase="downloading"],.wm-update-status[data-phase="verifying"]{color:#e8c1ff}
+.wm-update-tools [hidden]{display:none!important}
+@media(max-width:850px){.standalone-header{flex-wrap:wrap}.wm-update-tools{max-width:100%;width:100%;justify-content:flex-start;margin-left:50px}}
+
+.wm-update-tools:has(#wm-update-install:not([hidden])){padding:6px 8px;border-radius:10px;border:1px solid #398658;background:rgba(30,103,58,.23);box-shadow:0 0 0 2px rgba(86,209,132,.1)}
+.wm-update-tools #wm-update-install{background:#328052;border-color:#66db96;color:#fff}
+.wm-update-tools #wm-update-install:hover{background:#3f9761}

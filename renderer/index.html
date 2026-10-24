@@ -2,7 +2,16 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'none'; object-src 'none'">
 <title>WebP Maker</title><link rel="stylesheet" href="styles.css"></head><body>
-<header class="standalone-header"><div class="brand-mark">W</div><div><strong>WebP Maker</strong><p>Local MP4 to animated WebP · Under 9.99 MB · No uploads</p></div></header>
+<header class="standalone-header">
+  <div class="brand-mark" aria-hidden="true">W</div>
+  <div class="wm-header-title"><div><strong>WebP Maker</strong> <span id="wm-app-version" class="wm-app-version" aria-label="Installed app version">v…</span></div>
+    <p>Local MP4 to animated WebP · Under 9.99 MB · No uploads</p></div>
+  <div class="wm-update-tools" role="group" aria-label="Application updates">
+    <span id="wm-update-status" class="wm-update-status" role="status" aria-live="polite">Checking for updates…</span>
+    <button id="wm-update-check" type="button" class="ghost">Check for updates</button>
+    <button id="wm-update-install" type="button" class="primary" hidden>Update &amp; restart</button>
+  </div>
+</header>
 <main><section class="view active" id="view-webpmaker">
         <div class="wm-layout">
           <div class="panel wm-main-panel">
@@ -81,4 +90,4 @@
     <button id="wm-app-notice-close" type="button" class="wm-app-notice-close" aria-label="Dismiss WebP Maker notification" title="Dismiss notification">×</button>
   </div>
 
-</main><script src="mp4Probe.js"></script><script src="webpmaker.js"></script></body></html>
+</main><script src="mp4Probe.js"></script><script src="webpmaker.js"></script><script src="updater.js"></script></body></html>

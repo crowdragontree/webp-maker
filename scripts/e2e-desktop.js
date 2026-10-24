@@ -101,6 +101,8 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
       !document.getElementById('wm-convert').disabled,
     error:document.getElementById('wm-error').hidden?'':document.getElementById('wm-error').textContent
   }))()`),{timeout:75000,label:'both MP4s to load and pass metadata checks'});
+  const installedVersion=await win.webContents.executeJavaScript(`document.getElementById('wm-app-version').textContent.trim()`);
+  assert.strictEqual(installedVersion,'v'+require('../package.json').version,'Displayed app version is wrong');
   const uiFps=await win.webContents.executeJavaScript(`document.getElementById('wm-fps').value`);
   const uiQuality=await win.webContents.executeJavaScript(`document.getElementById('wm-quality').value`);
   assert.strictEqual(uiFps,'24','The default FPS changed unexpectedly');
