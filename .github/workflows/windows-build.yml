@@ -38,12 +38,48 @@ jobs:
           Push-Location $env:APP_DIR
           npm run package:win
           if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+          $SevenZip = 'release/WebP-Maker-win32-x64/resources/app/node_modules/7zip-bin/win/x64/7za.exe'
+          if (-not (Test-Path $SevenZip)) { throw 'Windows build is missing bundled 7-Zip extractor.' }
           Pop-Location
       - name: Create Windows download ZIP
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path "$env:APP_DIR/release/WebP-Maker-win32-x64/*" -DestinationPath 'dist/WebP-Maker-Windows-x64.zip' -Force
+      - name: End-to-end test of the downloadable Windows ZIP
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Run from a freshly extracted download, NOT the source directory.
+          $unpacked = Join-Path $env:RUNNER_TEMP 'WebP-Maker-First-Run-E2E'
+          Expand-Archive -LiteralPath 'dist/WebP-Maker-Windows-x64.zip' -DestinationPath $unpacked -Force
+          $exe = Join-Path $unpacked 'WebP-Maker.exe'
+          if (-not (Test-Path $exe)) { throw 'Download ZIP does not contain WebP-Maker.exe.' }
+          $report = Join-Path $env:RUNNER_TEMP 'WebP-Maker-Windows-E2E-Result.json'
+          Remove-Item -LiteralPath $report -ErrorAction SilentlyContinue
+          $env:WEBP_MAKER_E2E_REPORT = $report
+          # No local/system ImageMagick shortcuts are allowed during this test.
+          $env:JBS_WEBP_MAGICK = ''
+          $process = Start-Process -FilePath $exe -ArgumentList '--webp-e2e' -PassThru
+          try {
+            if (-not $process.WaitForExit(420000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              throw 'Windows E2E timed out before finishing the real MP4 conversion.'
+            }
+            if (-not (Test-Path $report)) { throw "Windows E2E produced no result (exit $($process.ExitCode))." }
+            $raw = Get-Content -LiteralPath $report -Raw
+            Write-Host $raw
+            $result = $raw | ConvertFrom-Json
+            if ($process.ExitCode -ne 0 -or -not $result.ok) {
+              throw "The packaged Windows conversion failed (exit $($process.ExitCode))."
+            }
+            if ($result.bytes -gt 9990000 -or $result.loop -ne 0 -or $result.frames -lt 12) {
+              throw 'WebP validation failed (size, frame count, or loop).'
+            }
+          } finally {
+            Remove-Item Env:WEBP_MAKER_E2E_REPORT -ErrorAction SilentlyContinue
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: WebP-Maker-Windows-x64
@@ -58,50 +94,3 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Locate WebP Maker files
-        shell: bash
-        run: |
-          if [ -f package.json ]; then echo 'APP_DIR=.' >> "$GITHUB_ENV";
-          elif [ -f WebP-Maker/package.json ]; then echo 'APP_DIR=WebP-Maker' >> "$GITHUB_ENV";
-          else echo 'Could not find WebP Maker package.json.'; exit 1; fi
-      - name: Install and test
-        shell: bash
-        run: |
-          cd "$APP_DIR"
-          npm install --no-audit --no-fund
-          npm run check
-      - name: Bundle official portable ImageMagick for Linux
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$APP_DIR"
-          mkdir -p resources/webpmaker/linux
-          curl -fL --retry 4 --retry-delay 2 \
-            'https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-34/ImageMagick-7.1.2-34-gcc-x86_64.AppImage' \
-            -o resources/webpmaker/linux/ImageMagick.AppImage
-          echo '6e9edfd35d5f30b57c27533afe003d6085faaf8607b207426f398d11751acf93  resources/webpmaker/linux/ImageMagick.AppImage' | sha256sum -c -
-          chmod +x resources/webpmaker/linux/ImageMagick.AppImage
-          # Verify the FUSE-free extraction used by WebP Maker on Linux.
-          scratch="$(mktemp -d)"
-          cd "$scratch"
-          "$GITHUB_WORKSPACE/$APP_DIR/resources/webpmaker/linux/ImageMagick.AppImage" --appimage-extract >/dev/null
-          ./squashfs-root/AppRun -version
-          rm -rf "$scratch"
-      - name: Build portable Linux app
-        shell: bash
-        run: |
-          cd "$APP_DIR"
-          npm run package:linux
-          test -f release/WebP-Maker-linux-x64/WebP-Maker
-          test -f release/WebP-Maker-linux-x64/resources/app/resources/webpmaker/linux/ImageMagick.AppImage
-      - name: Create Linux download ZIP
-        shell: bash
-        run: |
-          mkdir -p dist
-          cd "$APP_DIR/release"
-          zip -qry "$GITHUB_WORKSPACE/dist/WebP-Maker-Linux-x64.zip" WebP-Maker-linux-x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: WebP-Maker-Linux-x64
-          path: dist/WebP-Maker-Linux-x64.zip
-          if-no-files-found: error
