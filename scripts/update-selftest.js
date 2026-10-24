@@ -8,7 +8,7 @@ const path=require('node:path');
 const os=require('node:os');
 const crypto=require('node:crypto');
 const {execFileSync}=require('node:child_process');
-const {PortableUpdater,assetForRelease,compareVersions,validateZip,downloadVerified}=require('../lib/portableUpdater');
+const {PortableUpdater,assetForRelease,compareVersions,validateZip,downloadVerified,usable7ZipExecutable}=require('../lib/portableUpdater');
 const ROOT=path.resolve(__dirname,'..');
 const fixtureDir=path.join(ROOT,'tests','update-fixtures');
 const digest=file=>'sha256:'+crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -36,6 +36,28 @@ async function main(){
   await assert.rejects(()=>validateZip(path.join(fixtureDir,'traversal.zip')),/unsafe file name/);
   const tmp=await fsp.mkdtemp(path.join(os.tmpdir(),'webpmaker-updater-test-'));
   try{
+    // Regression test for GitHub's EACCES failure: strip Unix execute bits
+    // from an actual copy of 7za, then verify the same repair used by the
+    // production updater makes that binary runnable again.
+    const real7zip=require('7zip-bin').path7za;
+    assert(fs.existsSync(real7zip),'7zip-bin must be installed for the updater test');
+    if(process.platform==='linux'){
+      const nonExecutable=path.join(tmp,'7za-with-lost-execute-permission');
+      await fsp.copyFile(real7zip,nonExecutable);
+      await fsp.chmod(nonExecutable,0o644);
+      await assert.rejects(()=>fsp.access(nonExecutable,fs.constants.X_OK),/EACCES/);
+      await usable7ZipExecutable(nonExecutable);
+      assert((fs.statSync(nonExecutable).mode&0o111)!==0,'7za execute permission was not restored');
+      const permissionTestOutput=path.join(tmp,'permission-recovery-extracted');
+      await fsp.mkdir(permissionTestOutput);
+      execFileSync(nonExecutable,['x','-y','-tzip','-bso0','-bsp0',`-o${permissionTestOutput}`,
+        path.join(fixtureDir,'linux.zip')],{timeout:30000,windowsHide:true,stdio:'ignore'});
+      assert(fs.existsSync(path.join(permissionTestOutput,'WebP-Maker-linux-x64','WebP-Maker')),
+        '7za could not extract a real ZIP after executable permission repair');
+      // Also recreate EACCES on the actual installed dependency: prepare()
+      // must repair this exact binary via its normal, unmocked extraction path.
+      await fsp.chmod(real7zip,0o644);
+    }
     // Verify stream checksum failure leaves nothing on disk, never a partial install.
     const fake=path.join(fixtureDir,'win32.zip'),binary=fs.readFileSync(fake);
     const oldFetch=global.fetch;
@@ -53,20 +75,9 @@ async function main(){
       await fsp.writeFile(path.join(installDir,'OLD_VERSION'),'1.0.2');
       const userData=path.join(tmp,'userdata-'+platform);
       const snapshots=[];
-      let real7zip;try{real7zip=require('7zip-bin').path7za;}catch{}
       const updater=new PortableUpdater({version:'1.0.2',platform,appRoot:ROOT,installDir,userData,
         fetchRelease:async()=>releaseFor(platform),onStatus:s=>snapshots.push(s),
-        download:async({destination})=>{await fsp.copyFile(path.join(fixtureDir,`${platform}.zip`),destination);},
-        extractor:async(zip,dir)=>{
-          if(real7zip&&fs.existsSync(real7zip)){
-            execFileSync(real7zip,['x','-y','-tzip','-bso0','-bsp0',`-o${dir}`,zip],{timeout:30000,windowsHide:true});
-            return;
-          }
-          const src=platform==='win32'?dir:path.join(dir,'WebP-Maker-linux-x64');
-          await fsp.mkdir(path.join(src,'resources','app'),{recursive:true});
-          await fsp.writeFile(path.join(src,platform==='win32'?'WebP-Maker.exe':'WebP-Maker'),'#!/bin/sh\nexit 0\n');
-          await fsp.writeFile(path.join(src,'resources','app','package.json'),JSON.stringify({version:'1.0.4'}));
-        }});
+        download:async({destination})=>{await fsp.copyFile(path.join(fixtureDir,`${platform}.zip`),destination);}});
       assert.equal((await updater.check()).phase,'available');
       const stage=await updater.prepare();
       assert.equal(stage.version,'1.0.4');
@@ -83,7 +94,11 @@ async function main(){
         assert(fs.existsSync(path.join(stage.backup,'OLD_VERSION')));
       }
     }
-    console.log('Portable WebP Maker updater self-test passed (Windows + Linux release validation, ZIP safety, integrity, staged installs and Linux swap).');
+    if(process.platform==='linux'){
+      assert((fs.statSync(require('7zip-bin').path7za).mode&0o111)!==0,
+        'The production updater did not repair the installed 7za executable');
+    }
+    console.log('Portable WebP Maker updater self-test passed (Windows + Linux release validation, ZIP safety, Linux 7za EACCES recovery, staged installs and Linux swap).');
   }finally{await fsp.rm(tmp,{recursive:true,force:true,maxRetries:2}).catch(()=>{});}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
