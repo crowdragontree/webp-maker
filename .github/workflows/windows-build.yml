@@ -1,0 +1,26 @@
+name: Build portable WebP Maker for Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build portable application
+        run: npm run package:win
+      - name: Zip app folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path 'release/WebP-Maker-win32-x64/*' -DestinationPath 'dist/WebP-Maker-Windows-x64.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WebP-Maker-Windows-x64
+          path: dist/WebP-Maker-Windows-x64.zip
