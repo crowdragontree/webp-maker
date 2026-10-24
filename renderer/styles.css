@@ -211,3 +211,26 @@ body:has(#view-webpmaker.active) .topbar p{margin-top:3px;font-size:12px}
 .wm-update-tools:has(#wm-update-install:not([hidden])){padding:6px 8px;border-radius:10px;border:1px solid #398658;background:rgba(30,103,58,.23);box-shadow:0 0 0 2px rgba(86,209,132,.1)}
 .wm-update-tools #wm-update-install{background:#328052;border-color:#66db96;color:#fff}
 .wm-update-tools #wm-update-install:hover{background:#3f9761}
+
+/* Cropping controls and optional non-destructive source preview. */
+#view-webpmaker .wm-output-dimensions{font-size:10px;color:#cdb1e2;line-height:1.4}
+#view-webpmaker #wm-crop-position{margin-top:3px}
+#view-webpmaker .wm-crop-preview-wrap{margin:5px 0 8px;padding:8px 10px;border:1px solid #493457;border-radius:9px;background:#17111d}
+#view-webpmaker .wm-crop-preview-wrap>summary{cursor:pointer;font-size:11px;font-weight:700;color:#e4c3f5}
+#view-webpmaker .wm-crop-preview-content{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:10px}
+#view-webpmaker .wm-crop-preview-content label{font-size:10px;color:var(--muted)}
+#view-webpmaker #wm-crop-preview-clip{min-width:120px;max-width:100%;flex:1;font-size:11px}
+#view-webpmaker #wm-crop-preview{display:block;flex:none;width:auto;max-width:100%;height:auto;max-height:155px;margin:auto;background:#08080a;border:1px solid #5e4769;border-radius:6px}
+/* Two full-width columns so crop presets and positions are readable. */
+#view-webpmaker .wm-config{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+@media(max-width:640px){#view-webpmaker .wm-config{grid-template-columns:1fr}#view-webpmaker .wm-config-info:first-child{grid-column:auto}}
+
+/* Direct manipulation: freeform crop editor. Preview never affects source files. */
+#view-webpmaker #wm-crop-preview[data-freeform="true"]{max-height:300px;cursor:move;touch-action:none;user-select:none;outline-offset:3px}
+#view-webpmaker #wm-crop-preview[data-freeform="true"]:focus-visible{outline:2px solid #dba3ef}
+#view-webpmaker .wm-crop-preview-content:has(#wm-crop-preview[data-freeform="true"]){align-items:flex-start}
+#view-webpmaker .wm-crop-preview-content #wm-crop-preview[data-freeform="true"]{margin:8px auto;}
+#view-webpmaker .wm-freeform-tools{display:flex;width:100%;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid #3b2b44;padding-top:8px}
+#view-webpmaker .wm-freeform-tools[hidden]{display:none!important}
+#view-webpmaker #wm-freeform-status{font-size:10.5px;color:#e4d0ed;line-height:1.4;flex:1;min-width:180px}
+#view-webpmaker #wm-freeform-reset{font-size:11px;padding:6px 10px;min-height:30px}

@@ -1,6 +1,6 @@
 # WebP Maker: Windows and Linux
 
-Standalone MP4 to animated WebP app. Import two or more MP4 clips, drag to reorder them, and save one infinitely looping animated WebP **under 9.99 MB (9,990,000 bytes)**. All video conversion happens on the user's computer.
+Standalone MP4/WebM to animated WebP app. Import two or more video clips, drag to reorder them, and save one infinitely looping animated WebP **under 9.99 MB (9,990,000 bytes)**. All video conversion happens on the user's computer.
 
 ## Download the app
 
@@ -15,11 +15,12 @@ No macOS download is provided. Linux support targets standard x86_64 desktop dis
 
 ## What's included
 
-- Electron's HTML5 MP4 decoder. **No separate FFmpeg executable.**
+- Electron's HTML5 MP4/WebM decoder with detection of VP9/WebM streams mislabeled `.mp4` (common in ComfyUI/AI-generated exports). **No separate FFmpeg executable.**
 - ImageMagick encoding of independent full frames, with adaptive quality allocation between clips to reduce block artifacts.
-- Default **24 FPS** and **quality 80**. Output size starts at the original first MP4 dimensions and **never resizes automatically**. Minimum output width **480 px**.
+- Default **24 FPS** and **quality 80**. Fit (no crop) retains the original ratio; explicit crop presets are **16:9, 9:16, 3:4, 4:3 and 1:1**. Preset crops can be aligned center/top/bottom/left/right and previewed before conversion. **Freeform** shows the whole source frame with a draggable, corner-resizable crop rectangle. Each video clip has its own selection and a Reset button; selections retain the output ratio so frames are never stretched. Minimum output width **480 px**. Custom width and height can be edited independently (e.g. 480 × 640).
 - Automatic optimization within the selected FPS/quality protection limits, hard 9.99 MB cap, no audio, and infinite looping.
-- Cached decoded PNG frames for retries; local WebP preview and Save button.
+- Cached decoded PNG frames for retries; local crop preview, finished WebP preview and Save button.
+- Installed version display and in-app check for new versions, with Update & Restart for newer published GitHub Releases. Existing v1.0.2 installs can update to v1.0.3 once it is published.
 - No accounts, API keys, telemetry, uploaded videos, or Studio-related code.
 
 ## Build both downloadable apps on GitHub

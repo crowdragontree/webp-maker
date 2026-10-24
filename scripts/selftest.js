@@ -5,9 +5,9 @@ const renderer=fs.readFileSync(path.join(__dirname,'..','renderer','index.html')
 const {WebpMaker,MAX_BYTES}=require('../lib/webpMaker');
 assert.equal(MAX_BYTES,9990000);
 assert(typeof WebpMaker==='function');
-for(const x of ['wm-input','wm-preview','wm-fps','wm-quality','wm-size','wm-save','wm-expand'])assert(renderer.includes('id="'+x+'"'),x);
+for(const x of ['wm-input','wm-preview','wm-fps','wm-quality','wm-size','wm-save','wm-expand','wm-crop','wm-crop-position','wm-crop-preview','wm-freeform-status','wm-freeform-reset','wm-width','wm-height'])assert(renderer.includes('id="'+x+'"'),x);
 assert(main.includes('webpmaker:finish')&&main.includes('webpmaker:save'));
-for(const name of ['test-clip-1.mp4','test-clip-2.mp4']) {
+for(const name of ['test-clip-1.mp4','test-clip-2.mp4','comfy-webm-1.mp4','comfy-webm-2.mp4','comfy-webm-3.mp4']) {
   const file=path.join(__dirname,'..','tests','fixtures',name);
   assert(fs.statSync(file).size>1000,`Missing MP4 end-to-end test fixture: ${name}`);
 }
@@ -20,4 +20,5 @@ assert(fs.readFileSync(path.join(__dirname,'e2e-desktop.js'),'utf8').includes("[
 console.log('Standalone WebP Maker self-test passed');
 require('./metadata-selftest').catch(e=>{console.error(e);process.exitCode=1;});
 
+require('./video-crop-selftest').catch(e=>{console.error(e);process.exitCode=1;});
 require('./sevenzip-selftest');

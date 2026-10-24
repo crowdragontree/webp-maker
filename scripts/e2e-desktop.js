@@ -22,7 +22,7 @@ async function waitFor(fn,{timeout=60000,label='condition',interval=350}={}){
   throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(latest)}`);
 }
 
-function inspectWebp(file){
+function inspectWebp(file,{width=480,height=640,minFrames=12,minDurationMs=800,maxDurationMs=1200}={}){
   const b=fs.readFileSync(file);
   assert(b.length>100,'WebP output is unexpectedly small');
   assert(b.length<=MAX_BYTES,`WebP output is ${b.length} bytes; limit is ${MAX_BYTES}`);
@@ -53,9 +53,9 @@ function inspectWebp(file){
   assert.strictEqual(pos,b.length,'WebP chunks do not consume the complete file');
   assert(animated,'WebP animation flag is missing');
   assert.strictEqual(loop,0,'WebP must loop forever (ANIM count 0)');
-  assert.deepStrictEqual(dimensions,{width:480,height:640},'WebP dimensions changed');
-  assert(frames>=12,`Expected at least 12 animation frames, got ${frames}`);
-  assert(duration>=800&&duration<=1200,`Unexpected animation duration ${duration} ms`);
+  assert.deepStrictEqual(dimensions,{width,height},'WebP dimensions changed');
+  assert(frames>=minFrames,`Expected at least ${minFrames} animation frames, got ${frames}`);
+  assert(duration>=minDurationMs&&duration<=maxDurationMs,`Unexpected animation duration ${duration} ms`);
   return {bytes:b.length,frames,width:dimensions.width,height:dimensions.height,loop,durationMs:duration};
 }
 
@@ -135,12 +135,117 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
   const decodeInfo=execFileSync(nativeExe,[`${result}[0]`,'-format','%m %wx%h','info:'],
     {encoding:'utf8',windowsHide:true,timeout:30000}).trim();
   assert(/WEBP 480x640/.test(decodeInfo),`ImageMagick failed to decode WebP: ${decodeInfo}`);
+  // Regression for ComfyUI exports: a .mp4 filename containing a VP9/WebM
+  // stream with no Duration in its container. Confirm ALL THREE clips move
+  // in the final WebP, not just that its header has multiple ANMF frames.
+  const comfyFixtures=[1,2,3].map(i=>{
+    const name=`comfy-webm-${i}.mp4`;
+    const file=path.join(appRoot,'tests','fixtures',name);
+    assert(fs.existsSync(file),`Missing real-format regression fixture ${name}`);
+    return [name,fs.readFileSync(file).toString('base64')];
+  });
+  await win.webContents.executeJavaScript(`document.getElementById('wm-clear').click()`);
+  await win.webContents.executeJavaScript(`(()=>{
+    const dt=new DataTransfer();
+    for(const [name,b64] of ${JSON.stringify(comfyFixtures)}){
+      const binary=atob(b64),bytes=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      // Deliberately labeled MP4, exactly as the problematic ComfyUI files.
+      dt.items.add(new File([bytes],name,{type:'video/mp4',lastModified:0}));
+    }
+    const input=document.getElementById('wm-input');
+    input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
+  await waitFor(async()=>win.webContents.executeJavaScript(`(()=>({
+    ready:document.getElementById('wm-count').textContent.trim()==='(3)' &&
+      !document.getElementById('wm-convert').disabled,
+    error:document.getElementById('wm-error').hidden?'':document.getElementById('wm-error').textContent
+  }))()`),{timeout:75000,label:'three real VP9/WebM streams to load'});
+  const cropChoice=await win.webContents.executeJavaScript(`(()=>{
+    const crop=document.getElementById('wm-crop');crop.value='3:4';
+    crop.dispatchEvent(new Event('change',{bubbles:true}));
+    const label=document.getElementById('wm-output-dimensions').textContent;
+    return {label,width:document.getElementById('wm-size').value,
+      formats:[...document.querySelectorAll('#wm-clips .wm-clip-copy small')].map(e=>e.textContent)};
+  })()`);
+  assert(cropChoice.label.includes('480 × 640'),`3:4 crop isn't 480x640: ${JSON.stringify(cropChoice)}`);
+  assert(cropChoice.formats.every(f=>f.includes('WebM video')&&f.includes('0.81s')),
+    `WebM detection or duration failed: ${JSON.stringify(cropChoice.formats)}`);
+  // Switch the tested 480x640 preset into Freeform. The output dimensions
+  // must remain exactly 480x640 and each clip must have its own crop selection.
+  const freeformChoice=await win.webContents.executeJavaScript(`(()=>{
+    const crop=document.getElementById('wm-crop');crop.value='freeform';
+    crop.dispatchEvent(new Event('change',{bubbles:true}));
+    const editor=document.getElementById('wm-crop-preview-wrap');
+    const output=document.getElementById('wm-output-dimensions').textContent;
+    const canvas=document.getElementById('wm-crop-preview');
+    // Prepare unique clip 2/3 selections through the same pointer handlers
+    // used by actual mouse and touch users in the renderer.
+    canvas.setPointerCapture=()=>{};
+    canvas.hasPointerCapture=()=>false;
+    const select=document.getElementById('wm-crop-preview-clip');
+    function dragClip(option,dx,dy){
+      select.selectedIndex=option;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+      const r=canvas.getBoundingClientRect();
+      const x=r.left+r.width/2, y=r.top+r.height/2;
+      canvas.dispatchEvent(new PointerEvent('pointerdown',{pointerId:71+option,button:0,clientX:x,clientY:y,bubbles:true}));
+      canvas.dispatchEvent(new PointerEvent('pointermove',{pointerId:71+option,clientX:x+dx,clientY:y+dy,bubbles:true}));
+      canvas.dispatchEvent(new PointerEvent('pointerup',{pointerId:71+option,clientX:x+dx,clientY:y+dy,bubbles:true}));
+    }
+    // Not enough room to move a full-height 3:4 crop vertically. Move it
+    // sideways and resize different clips to exercise independent framing.
+    dragClip(1,20,0);
+    dragClip(2,-20,0);
+    return {output,open:editor.open,visible:!editor.hidden,custom:document.getElementById('wm-size').value,
+      crop:crop.value,freeformTools:!document.getElementById('wm-freeform-tools').hidden};
+  })()`);
+  assert(freeformChoice.output.includes('480 \u00d7 640')&&freeformChoice.custom==='custom',
+    `Switching to Freeform changed the 480x640 output: ${JSON.stringify(freeformChoice)}`);
+  assert(freeformChoice.open&&freeformChoice.visible&&freeformChoice.freeformTools,
+    `Freeform crop editor did not open: ${JSON.stringify(freeformChoice)}`);
+
+  await win.webContents.executeJavaScript(`document.getElementById('wm-convert').click()`);
+  await waitFor(async()=>win.webContents.executeJavaScript(`(()=>({
+    ready:!document.getElementById('wm-result').hidden &&
+      document.getElementById('wm-progress-pct').textContent.trim()==='100%',
+    error:document.getElementById('wm-error').hidden?'':document.getElementById('wm-error').textContent,
+    status:document.getElementById('wm-progress-title').textContent,
+    progress:document.getElementById('wm-progress-detail').textContent
+  }))()`),{timeout:360000,label:'three ComfyUI-style video clips to animate with freeform crop',interval:600});
+  const secondResult=maker.resultPath();
+  assert(secondResult,'No WebP generated from the VP9/WebM videos');
+  // Each independent freeform crop must reach the real encoder. Crop keys
+  // are numeric-only for the backend source-validation and cache contract.
+  const cropKey=maker.cachedFrames?.sourceKey||'';
+  assert(/^[0-9,]+$/.test(cropKey),'Freeform source cache key must contain only numeric IDs');
+  const fields=cropKey.split(',');
+  assert.strictEqual(fields.length,14,'Missing three independent clip crop selections');
+  assert(new Set([fields[5],fields[8],fields[11]]).size>=2,
+    'Clip-specific freeform crop positions did not reach the encoder');
+  const secondSave=path.join(path.dirname(reportPath),`WebP-Maker-${isWindows?'Windows':'Linux'}-Comfy-Crop-Regression.webp`);
+  maker.save(secondSave);
+  const comfyMetrics=inspectWebp(secondSave,{width:480,height:640,minFrames:36,minDurationMs:2000,maxDurationMs:2800});
+  const signatureText=execFileSync(nativeExe,[secondSave,'-coalesce','-format','%#\n','info:'],
+    {encoding:'utf8',windowsHide:true,timeout:90000,maxBuffer:10*1024*1024});
+  const signatures=signatureText.trim().split(/\r?\n/).filter(Boolean);
+  assert.strictEqual(signatures.length,comfyMetrics.frames,
+    `ImageMagick decoded only ${signatures.length}/${comfyMetrics.frames} frames`);
+  const perClip=Math.round(0.8125*maker.latest.fps);
+  assert.strictEqual(comfyMetrics.frames,perClip*3,'Clip boundaries or durations were lost');
+  const uniqueFrames=[];
+  for(let i=0;i<3;i++){
+    const segment=signatures.slice(i*perClip,(i+1)*perClip);
+    const unique=new Set(segment).size;
+    assert(unique>=5,`Clip ${i+1} is a still-frame slideshow: ${unique} moving frames of ${segment.length}`);
+    uniqueFrames.push(unique);
+  }
   const report={ok:true,stage:'complete',download:'real ImageMagick GitHub release',
     extraction:isWindows?'bundled 7zip-bin Windows executable':'bundled Linux ImageMagick AppImage, extracted without FUSE',
     decoding:'real Electron HTML5 video and PNG canvas capture',
     encoding:'actual ImageMagick WebP Maker pipeline',
     verified:'RIFF, VP8X, ANIM infinite loop, frames, duration, dimensions, size, and decoding',
-    imageMagick:version.split(/\r?\n/)[0],...metrics,elapsedSeconds:Number(((Date.now()-started)/1000).toFixed(1))};
+    imageMagick:version.split(/\r?\n/)[0],...metrics,comfyRegression:{...comfyMetrics,uniqueFrames},elapsedSeconds:Number(((Date.now()-started)/1000).toFixed(1))};
   fs.writeFileSync(reportPath,JSON.stringify(report,null,2));
   console.log(`PASS: packaged ${process.platform} first-run WebP conversion`,report);
   return report;

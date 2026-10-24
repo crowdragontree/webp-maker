@@ -56,7 +56,7 @@ async function run() {
   assert.strictEqual((await simulate({duration:2})).duration,2,'normal video');
   assert.strictEqual((await simulate({duration:Infinity,probeResult:{duration:2}})).duration,2,'Infinity duration fallback');
   assert.strictEqual((await simulate({duration:NaN,late:true})).duration,2,'late durationchange');
-  await assert.rejects(simulate({duration:NaN,unsupported:true}),/Unsupported MP4 video codec/,'codec feedback');
+  await assert.rejects(simulate({duration:NaN,unsupported:true}),/Unsupported or unreadable video format/,'codec feedback');
   console.log('MP4 metadata fallback tests passed');
 }
 module.exports=run();
