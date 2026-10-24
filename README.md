@@ -39,7 +39,7 @@ The workflow downloads the [official ImageMagick 7.1.2-34 Linux AppImage](https:
 
 ## Security and license
 
-Only the standalone WebP Maker source is included. Do not upload Studio account information or other private files. The Linux build includes the official ImageMagick AppImage and its upstream licensing; see [ImageMagick's license](https://imagemagick.org/script/license.php). You can choose your own appropriate license for the WebP Maker source. Linux and Windows builds are unsigned and may show operating-system security warnings.
+Only the standalone WebP Maker source is included. The Linux build includes the official ImageMagick AppImage and its upstream licensing; see [ImageMagick's license](https://imagemagick.org/script/license.php). You can choose your own appropriate license for the WebP Maker source. Linux and Windows builds are unsigned and may show operating-system security warnings.
 
 ## Notes
 
