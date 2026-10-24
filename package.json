@@ -1,13 +1,14 @@
 {
   "name": "webp-maker-local",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Offline MP4 to animated WebP maker with ImageMagick quality optimization",
+  "description": "Local Windows and Linux MP4 to animated WebP maker using ImageMagick",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "check": "node scripts/selftest.js",
-    "package:win": "electron-packager . WebP-Maker --platform=win32 --arch=x64 --out=release --overwrite --icon=assets/icon.ico --ignore=^/release$ --ignore=^/dist$ --ignore=^/.github$ --prune=true"
+    "package:win": "electron-packager . WebP-Maker --platform=win32 --arch=x64 --out=release --overwrite --icon=assets/icon.ico --ignore=^/release$ --ignore=^/dist$ --ignore=^/.github$ --prune=true",
+    "package:linux": "electron-packager . WebP-Maker --platform=linux --arch=x64 --out=release --overwrite --icon=assets/icon.png --ignore=^/release$ --ignore=^/dist$ --ignore=^/.github$ --prune=true"
   },
   "devDependencies": {
     "electron": "32.3.3",
