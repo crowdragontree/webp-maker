@@ -1,0 +1,10 @@
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
+const renderer=fs.readFileSync(path.join(__dirname,'..','renderer','index.html'),'utf8');
+const {WebpMaker,MAX_BYTES}=require('../lib/webpMaker');
+assert.equal(MAX_BYTES,9990000);
+assert(typeof WebpMaker==='function');
+for(const x of ['wm-input','wm-preview','wm-fps','wm-quality','wm-size','wm-save','wm-expand'])assert(renderer.includes('id="'+x+'"'),x);
+assert(main.includes('webpmaker:finish')&&main.includes('webpmaker:save'));
+console.log('Standalone WebP Maker self-test passed');
