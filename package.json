@@ -1,6 +1,6 @@
 {
   "name": "webp-maker-local",
-  "version": "1.0.3",
+  "version": "1.0.2",
   "private": true,
   "description": "Local Windows and Linux MP4 to animated WebP maker using ImageMagick",
   "main": "main.js",

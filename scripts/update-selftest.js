@@ -18,18 +18,18 @@ function releaseFor(platform,version='1.0.4'){
   return {tag_name:`v${version}`,draft:false,prerelease:false,assets:[{name,state:'uploaded',size:fs.statSync(file).size,digest:digest(file),browser_download_url:`https://github.com/crowdragontree/webp-maker/releases/download/v${version}/${name}`}]};
 }
 async function main(){
-  assert.equal(compareVersions('v1.0.4','1.0.3'),1);
-  assert.equal(compareVersions('1.0.3','v1.0.4'),-1);
-  assert.equal(compareVersions('v1.0.3','1.0.3'),0);
+  assert.equal(compareVersions('v1.0.4','1.0.2'),1);
+  assert.equal(compareVersions('1.0.2','v1.0.4'),-1);
+  assert.equal(compareVersions('v1.0.2','1.0.2'),0);
   assert.equal(compareVersions('2.0.0','1.99.99'),1);
   for(const platform of ['win32','linux']){
-    assert.equal(assetForRelease(releaseFor(platform),platform,'1.0.3').version,'1.0.4');
+    assert.equal(assetForRelease(releaseFor(platform),platform,'1.0.2').version,'1.0.4');
     assert.equal(assetForRelease(releaseFor(platform),platform,'1.0.4'),null);
-    assert.throws(()=>assetForRelease({...releaseFor(platform),assets:[]},platform,'1.0.3'),/no WebP-Maker/);
+    assert.throws(()=>assetForRelease({...releaseFor(platform),assets:[]},platform,'1.0.2'),/no WebP-Maker/);
     const missingDigest=releaseFor(platform);delete missingDigest.assets[0].digest;
-    assert.throws(()=>assetForRelease(missingDigest,platform,'1.0.3'),/SHA-256/);
+    assert.throws(()=>assetForRelease(missingDigest,platform,'1.0.2'),/SHA-256/);
     const latest=releaseFor(platform);latest.assets[0].browser_download_url='https://attacker.example/download.zip';
-    assert.throws(()=>assetForRelease(latest,platform,'1.0.3'),/unexpected update address/);
+    assert.throws(()=>assetForRelease(latest,platform,'1.0.2'),/unexpected update address/);
     const zip=path.join(fixtureDir,`${platform}.zip`);
     assert((await validateZip(zip)).entries>=3);
   }
@@ -50,11 +50,11 @@ async function main(){
     for(const platform of ['win32','linux']){
       const parent=path.join(tmp,platform);await fsp.mkdir(parent);
       const installDir=path.join(parent,'Installed-WebP-Maker');await fsp.mkdir(installDir);
-      await fsp.writeFile(path.join(installDir,'OLD_VERSION'),'1.0.3');
+      await fsp.writeFile(path.join(installDir,'OLD_VERSION'),'1.0.2');
       const userData=path.join(tmp,'userdata-'+platform);
       const snapshots=[];
       let real7zip;try{real7zip=require('7zip-bin').path7za;}catch{}
-      const updater=new PortableUpdater({version:'1.0.3',platform,appRoot:ROOT,installDir,userData,
+      const updater=new PortableUpdater({version:'1.0.2',platform,appRoot:ROOT,installDir,userData,
         fetchRelease:async()=>releaseFor(platform),onStatus:s=>snapshots.push(s),
         download:async({destination})=>{await fsp.copyFile(path.join(fixtureDir,`${platform}.zip`),destination);},
         extractor:async(zip,dir)=>{
