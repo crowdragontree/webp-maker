@@ -1,3 +1,67 @@
+name: Build WebP Maker for Windows and Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows (64-bit)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Locate WebP Maker files
+        shell: pwsh
+        run: |
+          if (Test-Path 'package.json') { 'APP_DIR=.' >> $env:GITHUB_ENV }
+          elseif (Test-Path 'WebP-Maker/package.json') { 'APP_DIR=WebP-Maker' >> $env:GITHUB_ENV }
+          else { throw 'Could not find WebP Maker package.json.' }
+      - name: Install and test
+        shell: pwsh
+        run: |
+          Push-Location $env:APP_DIR
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
+          npm run check
+          if ($LASTEXITCODE -ne 0) { throw 'WebP Maker self-test failed' }
+          Pop-Location
+      - name: Build portable Windows app
+        shell: pwsh
+        run: |
+          Push-Location $env:APP_DIR
+          npm run package:win
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+          Pop-Location
+      - name: Create Windows download ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$env:APP_DIR/release/WebP-Maker-win32-x64/*" -DestinationPath 'dist/WebP-Maker-Windows-x64.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WebP-Maker-Windows-x64
+          path: dist/WebP-Maker-Windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux (64-bit)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Locate WebP Maker files
+        shell: bash
+        run: |
+          if [ -f package.json ]; then echo 'APP_DIR=.' >> "$GITHUB_ENV";
           elif [ -f WebP-Maker/package.json ]; then echo 'APP_DIR=WebP-Maker' >> "$GITHUB_ENV";
           else echo 'Could not find WebP Maker package.json.'; exit 1; fi
       - name: Install and test
