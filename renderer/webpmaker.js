@@ -148,20 +148,66 @@
   }
   function removeClip(i){if(converting)return;const [c]=clips.splice(i,1);untrack(c);clearError();clearResult();render();}
   function move(from,to){if(converting||from===to||from<0||to<0||to>=clips.length)return;const [c]=clips.splice(from,1);clips.splice(to,0,c);clearResult();render();}
+  // Some valid MP4s expose an infinite/unknown duration at loadedmetadata.
+  // Wait for later media events and, if necessary, read only the MP4 container
+  // headers to recover the duration. This never converts or uploads the file.
   function loadMetadata(file){
     return new Promise((resolve,reject)=>{
+      if(!file.size){reject(new Error(`${file.name} is empty.`));return;}
       const url=URL.createObjectURL(file);
       const video=document.createElement('video');video.muted=true;video.preload='auto';video.playsInline=true;
-      let timer;
-      function cleanup(){clearTimeout(timer);video.removeEventListener('loadedmetadata',ok);video.removeEventListener('error',bad);}
-      function bad(){cleanup();URL.revokeObjectURL(url);reject(new Error(`Cannot decode ${file.name} in Electron. Check that it is a playable MP4.`));}
-      function ok(){
-        cleanup();const width=video.videoWidth,height=video.videoHeight,duration=video.duration;
-        if(!width||!height||!Number.isFinite(duration)||duration<=0){URL.revokeObjectURL(url);reject(new Error(`Unable to read video metadata for ${file.name}.`));return;}
-        resolve({file,url,video,name:file.name,bytes:file.size,width,height,duration,key:[file.name,file.size,file.lastModified].join('|'),instanceId:++clipInstanceSerial});
+      let timer=null,seekTimer=null,done=false,probe={},triedSeek=false;
+      function cleanup(){
+        clearTimeout(timer);clearTimeout(seekTimer);
+        for(const event of ['loadedmetadata','loadeddata','durationchange','canplay','seeked'])video.removeEventListener(event,check);
+        video.removeEventListener('error',bad);
       }
-      timer=setTimeout(bad,15000);
-      video.addEventListener('loadedmetadata',ok,{once:true});video.addEventListener('error',bad,{once:true});
+      function fail(message){
+        if(done)return;done=true;cleanup();
+        try{video.removeAttribute('src');video.load();}catch{}
+        URL.revokeObjectURL(url);reject(new Error(message));
+      }
+      function bad(){
+        const reason=video.error?.code===4?'Unsupported MP4 video codec': 'The MP4 could not be decoded';
+        fail(`${reason} in ${file.name}. Your video player may support codecs that WebP Maker cannot decode.`);
+      }
+      function duration(){
+        if(Number.isFinite(video.duration)&&video.duration>0)return video.duration;
+        if(Number.isFinite(probe.duration)&&probe.duration>0)return probe.duration;
+        if(video.seekable?.length){
+          try{const end=video.seekable.end(video.seekable.length-1);
+            if(Number.isFinite(end)&&end>0)return end;
+          }catch{}
+        }
+        if(triedSeek&&!video.seeking&&video.readyState>=2&&video.currentTime>0&&video.currentTime<1e9){
+          return video.currentTime;
+        }
+        return null;
+      }
+      function check(){
+        if(done)return;
+        const width=video.videoWidth||(video.readyState>=2?probe.width:0);
+        const height=video.videoHeight||(video.readyState>=2?probe.height:0);
+        const seconds=duration();
+        if(!width||!height||!Number.isFinite(seconds)||seconds<=0)return;
+        done=true;cleanup();
+        // A probe is for duration/size only. Electron still decodes every frame.
+        resolve({file,url,video,name:file.name,bytes:file.size,width,height,duration:seconds,
+          key:[file.name,file.size,file.lastModified].join('|'),instanceId:++clipInstanceSerial});
+      }
+      timer=setTimeout(()=>fail(`Unable to read video metadata for ${file.name}. The MP4 may have an unsupported codec or an unreadable duration.`),25000);
+      for(const event of ['loadedmetadata','loadeddata','durationchange','canplay','seeked'])video.addEventListener(event,check);
+      video.addEventListener('error',bad,{once:true});
+      // ISO BMFF header parsing covers files that expose Infinity/NaN duration
+      // despite playing normally. It does not depend on FFmpeg.
+      Promise.resolve().then(()=>window.webpMp4Probe?.probeMp4(file))
+        .then(info=>{if(done)return;probe=info||{};check();})
+        .catch(()=>{});
+      seekTimer=setTimeout(()=>{
+        if(done||Number.isFinite(video.duration)||video.readyState<1)return;
+        triedSeek=true;
+        try{video.currentTime=1e9;}catch{}
+      },1200);
       video.src=url;video.load();
     });
   }

@@ -8,3 +8,4 @@ assert(typeof WebpMaker==='function');
 for(const x of ['wm-input','wm-preview','wm-fps','wm-quality','wm-size','wm-save','wm-expand'])assert(renderer.includes('id="'+x+'"'),x);
 assert(main.includes('webpmaker:finish')&&main.includes('webpmaker:save'));
 console.log('Standalone WebP Maker self-test passed');
+require('./metadata-selftest').catch(e=>{console.error(e);process.exitCode=1;});
