@@ -9,3 +9,5 @@ for(const x of ['wm-input','wm-preview','wm-fps','wm-quality','wm-size','wm-save
 assert(main.includes('webpmaker:finish')&&main.includes('webpmaker:save'));
 console.log('Standalone WebP Maker self-test passed');
 require('./metadata-selftest').catch(e=>{console.error(e);process.exitCode=1;});
+
+require('./sevenzip-selftest');
