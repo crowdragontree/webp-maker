@@ -1,3 +1,67 @@
+name: Build WebP Maker for Windows and Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows (64-bit)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Locate WebP Maker files
+        shell: pwsh
+        run: |
+          if (Test-Path 'package.json') { 'APP_DIR=.' >> $env:GITHUB_ENV }
+          elseif (Test-Path 'WebP-Maker/package.json') { 'APP_DIR=WebP-Maker' >> $env:GITHUB_ENV }
+          else { throw 'Could not find WebP Maker package.json.' }
+      - name: REQUIRE Windows conversion test files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @('main.js','lib/webpMaker.js','scripts/e2e-desktop.js',
+            'tests/fixtures/test-clip-1.mp4','tests/fixtures/test-clip-2.mp4',
+            'resources/webpmaker/setup-webpmaker.ps1') | ForEach-Object {
+            $file = Join-Path $env:APP_DIR $_
+            if (-not (Test-Path -LiteralPath $file)) {
+              throw "Missing required conversion test file: $file. Upload the complete test update first."
+            }
+          }
+      - name: Install and test
+        shell: pwsh
+        run: |
+          Push-Location $env:APP_DIR
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
+          npm run check
+          if ($LASTEXITCODE -ne 0) { throw 'WebP Maker self-test failed' }
+          Pop-Location
+      - name: Build portable Windows app
+        shell: pwsh
+        run: |
+          Push-Location $env:APP_DIR
+          npm run package:win
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+          $SevenZip = 'release/WebP-Maker-win32-x64/resources/app/node_modules/7zip-bin/win/x64/7za.exe'
+          if (-not (Test-Path $SevenZip)) { throw 'Windows build is missing bundled 7-Zip extractor.' }
+          Pop-Location
+      - name: Create Windows download ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$env:APP_DIR/release/WebP-Maker-win32-x64/*" -DestinationPath 'dist/WebP-Maker-Windows-x64.zip' -Force
+      - name: "TEST actual Windows app - MP4 to WebP (REQUIRED)"
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
           $ErrorActionPreference = 'Stop'
           # Run from a freshly extracted download, NOT the source directory.
           $unpacked = Join-Path $env:RUNNER_TEMP 'WebP-Maker-First-Run-E2E'
