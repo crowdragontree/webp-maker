@@ -60,10 +60,16 @@ function inspectWebp(file){
 }
 
 async function run({win,maker,appRoot,toolsDir,reportPath}){
-  assert(process.platform==='win32','Packaged Windows E2E must run on Windows');
+  assert(['win32','linux'].includes(process.platform),'Packaged E2E requires Windows or Linux');
+  const isWindows=process.platform==='win32';
   assert(reportPath,'WEBP_MAKER_E2E_REPORT is required');
   const started=Date.now();
-  const nativeExe=path.join(toolsDir,'imagemagick','magick.exe');
+  const nativeExe=isWindows?path.join(toolsDir,'imagemagick','magick.exe'):
+    path.join(toolsDir,'imagemagick-linux','AppRun');
+  if(!isWindows){
+    const bundle=path.join(appRoot,'resources','webpmaker','linux','ImageMagick.AppImage');
+    assert(fs.existsSync(bundle),'Packaged Linux download is missing the bundled ImageMagick AppImage');
+  }
   assert(!fs.existsSync(nativeExe),'ImageMagick was already present; first-run download not tested');
   const fixtures=['test-clip-1.mp4','test-clip-2.mp4'].map(name=>{
     const file=path.join(appRoot,'tests','fixtures',name);
@@ -116,7 +122,7 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
   const result=maker.resultPath();
   assert(result&&fs.existsSync(result),'The app did not produce a saved WebP result');
   // Check the app's actual save operation, not only its temporary output.
-  const savedPath=path.join(path.dirname(reportPath),'WebP-Maker-Windows-E2E-Output.webp');
+  const savedPath=path.join(path.dirname(reportPath),`WebP-Maker-${isWindows?'Windows':'Linux'}-E2E-Output.webp`);
   const saveResult=maker.save(savedPath);
   assert(saveResult.saved&&fs.existsSync(savedPath),'WebP Maker save failed');
   assert.strictEqual(fs.readFileSync(savedPath).compare(fs.readFileSync(result)),0,
@@ -128,13 +134,13 @@ async function run({win,maker,appRoot,toolsDir,reportPath}){
     {encoding:'utf8',windowsHide:true,timeout:30000}).trim();
   assert(/WEBP 480x640/.test(decodeInfo),`ImageMagick failed to decode WebP: ${decodeInfo}`);
   const report={ok:true,stage:'complete',download:'real ImageMagick GitHub release',
-    extraction:'bundled 7zip-bin Windows executable',
+    extraction:isWindows?'bundled 7zip-bin Windows executable':'bundled Linux ImageMagick AppImage, extracted without FUSE',
     decoding:'real Electron HTML5 video and PNG canvas capture',
     encoding:'actual ImageMagick WebP Maker pipeline',
     verified:'RIFF, VP8X, ANIM infinite loop, frames, duration, dimensions, size, and decoding',
     imageMagick:version.split(/\r?\n/)[0],...metrics,elapsedSeconds:Number(((Date.now()-started)/1000).toFixed(1))};
   fs.writeFileSync(reportPath,JSON.stringify(report,null,2));
-  console.log('PASS: packaged Windows first-run WebP conversion',report);
+  console.log(`PASS: packaged ${process.platform} first-run WebP conversion`,report);
   return report;
 }
 module.exports={run,inspectWebp};

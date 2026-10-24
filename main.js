@@ -45,13 +45,13 @@ app.whenReady().then(()=>{
   });
   create();
   if(E2E){
-    // Runs against the ACTUAL packaged Windows application, using Electron's
+    // Runs against the ACTUAL packaged Windows or Linux application, using Electron's
     // MP4 decoder, the existing UI/IPC, and freshly downloaded ImageMagick.
     require('./scripts/e2e-desktop').run({win,maker,appRoot:__dirname,toolsDir:e2eTools,
       reportPath:process.env.WEBP_MAKER_E2E_REPORT}).then(()=>{
       quitting=true;app.exit(0);
     }).catch(error=>{
-      console.error('WebP Maker Windows E2E FAILED:',error);
+      console.error(`WebP Maker ${process.platform} E2E FAILED:`,error);
       try{fs.writeFileSync(process.env.WEBP_MAKER_E2E_REPORT,JSON.stringify({ok:false,error:String(error?.stack||error)},null,2));}catch{}
       quitting=true;app.exit(1);
     });

@@ -11,8 +11,9 @@ for(const name of ['test-clip-1.mp4','test-clip-2.mp4']) {
   const file=path.join(__dirname,'..','tests','fixtures',name);
   assert(fs.statSync(file).size>1000,`Missing MP4 end-to-end test fixture: ${name}`);
 }
-assert(main.includes('--webp-e2e'),'Packaged Windows end-to-end test entrypoint is missing');
+assert(main.includes('--webp-e2e'),'Packaged end-to-end test entrypoint is missing');
 assert(typeof require('./e2e-desktop').inspectWebp==='function','WebP validator missing');
+assert(fs.readFileSync(path.join(__dirname,'e2e-desktop.js'),'utf8').includes("['win32','linux'].includes(process.platform)"),'Linux packaged-app E2E support is missing');
 console.log('Standalone WebP Maker self-test passed');
 require('./metadata-selftest').catch(e=>{console.error(e);process.exitCode=1;});
 
