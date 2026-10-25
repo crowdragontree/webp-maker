@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src https: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Introduction Designer</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header class="id-topbar"><div class="id-brand"><span class="id-brand-icon">✦</span><div><strong>Introduction Designer</strong><small>Build your JuicyChat introduction by dragging, editing, and arranging items.</small></div></div><div class="id-top-actions">
+<button id="id-undo" class="id-ghost" type="button" title="Undo (Ctrl+Z)" disabled>↶ Undo</button><button id="id-redo" class="id-ghost" type="button" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button>
+<button id="id-new" class="id-ghost">New design</button><select id="id-template-select" aria-label="Saved introduction templates"><option value="">Saved templates</option></select><button id="id-use-template" class="id-ghost">Load</button><button id="id-save-template" class="id-ghost">Save as template</button><button id="id-template-export" class="id-ghost" title="Export selected template as JSON">Export</button><button id="id-template-import" class="id-ghost" title="Import saved JSON template">Import</button><button id="id-template-delete" class="id-ghost id-danger" title="Delete selected saved template">Delete</button>
+</div></header>
+<div class="id-app">
+  <aside class="id-sidebar" aria-label="Introduction content and layers">
+    <div class="id-section-head"><h2>Content</h2><span class="id-muted">Edit without code</span></div>
+    <div class="id-content-fields">
+      <label>Scene Name<input id="id-scene" placeholder="Scene Name"></label>
+      <label>Character Name<input id="id-name" placeholder="Character Name"></label>
+      <label>Introduction<textarea id="id-intro" rows="6" placeholder="Introduction"></textarea></label>
+      <label>Extra text <span class="id-muted">Optional, use anywhere</span><textarea id="id-extra" rows="3" placeholder="Extra Text"></textarea></label>
+    </div>
+    <div class="id-section-head id-bordered"><h2>Add an item</h2><span class="id-muted">Click or drag</span></div>
+    <div id="id-palette" class="id-palette"></div>
+    <div class="id-section-head id-bordered"><h2>Your items</h2><span class="id-muted">Drag to reorder</span></div>
+    <div class="id-structure-hint">Click an item to edit it. Drag to change the order.</div>
+    <div id="id-layers" class="id-layers" role="list"></div>
+
+  </aside>
+  <main class="id-workspace">
+    <div class="id-workspace-toolbar"><div class="id-toggle"><button id="id-visual-tab" class="active" aria-pressed="true">Design</button><button id="id-html-tab" aria-pressed="false">Paste HTML</button></div><div class="id-preview-tools"><label>Layout <select id="id-layout-mode" aria-label="Design layout mode"><option value="freeform">Move freely</option><option value="flow">Stack items</option></select></label><span id="id-auto-height-readout" class="id-auto-readout">Height: auto</span><label id="id-stage-height-wrap">Height <input id="id-stage-height" type="number" min="240" max="3000" step="10" value="240" aria-label="Manual canvas height in pixels"><span>px</span></label><label id="id-auto-height-wrap" class="id-canvas-checkbox" title="Automatically resize the background to fit your content"><input id="id-auto-height" type="checkbox" checked> Auto height</label><button id="id-fit-height" type="button" class="id-fit-height" title="Reset the background to the height of the content">Fit content</button><details class="id-more-settings"><summary>Options</summary><div class="id-more-settings-menu"><label title="Line up items with nearby edges"><input id="id-snap-enabled" type="checkbox" checked> Snap into place</label><label title="Show guide lines while moving items"><input id="id-show-guides" type="checkbox" checked> Show guides</label><label title="Move other items out of the way when an item is dropped"><input id="id-avoid-overlap" type="checkbox" checked> Move other items when dragging</label></div></details><label>Preview width <select id="id-preview-width"><option value="360">Mobile · 360px</option><option value="480" selected>JuicyChat · 480px</option><option value="640">Wide · 640px</option></select></label><span id="id-unsaved" class="id-muted">Saved on this device</span></div>
+      <div id="id-html-actions" class="id-html-actions" role="group" aria-label="HTML editor actions" hidden><button id="id-apply-html" class="id-primary" type="button">Use pasted HTML</button><button id="id-back-visual" class="id-ghost" type="button">Return to visual designer</button><button id="id-return-generated" class="id-ghost" type="button">Use visual blocks again</button></div></div>
+    <div id="id-visual-panel" class="id-canvas-stage"><div class="id-preview-note">YOUR INTRODUCTION</div><div id="id-canvas" class="id-canvas" aria-label="Visual introduction design canvas" tabindex="0"><div id="id-card"></div></div><p class="id-canvas-hint" id="id-canvas-hint">Drag to move. Resize using the handles. Click outside to deselect. Press Delete to remove.</p></div>
+    <section id="id-html-panel" class="id-html-panel" hidden><h2>HTML &amp; existing templates</h2>
+      <p>To edit existing Introduction code, paste it here and choose <strong>Use pasted HTML</strong>. Text placeholders: <code>{{scene}}</code>, <code>{{name}}</code>, <code>{{intro}}</code>, <code>{{extra}}</code>.</p>
+      <div class="id-code-editor" id="id-import-editor"><pre class="id-code-highlight" id="id-import-highlight" aria-hidden="true"></pre><textarea id="id-custom-html" rows="16" spellcheck="false" wrap="off" aria-label="HTML source editor with syntax highlighting" placeholder="Paste an existing introduction's HTML, or edit the generated code here..."></textarea></div>
+      <details class="id-live-html" open><summary>Live HTML preview (updates while typing)</summary><div id="id-import-live-preview" class="id-import-live-preview" aria-label="Live sanitized HTML preview"></div></details>
+      <p class="id-note">Custom HTML is checked against JuicyChat's guide and sanitized before preview/export. Imported HTML can be saved as a template. Compatible layouts become editable visual layers with their original borders and styles retained. Complex imported markup remains editable as custom layers.</p>
+    </section>
+    <section class="id-output"><div class="id-output-head"><div><h3>Your introduction code</h3><p>Ready to paste into JuicyChat. You can also view the code.</p></div><button id="id-toggle-code" class="id-ghost">Show code</button></div><div id="id-output-highlight-wrap" class="id-code-output" hidden><pre id="id-output-highlight" class="id-code-highlight" aria-label="Syntax-highlighted generated HTML"></pre></div><textarea id="id-output-html" readonly spellcheck="false" rows="5" hidden></textarea></section>
+  </main>
+  <aside class="id-inspector" aria-label="Design settings and selected element">
+    <div class="id-inspector-tabs"><button id="id-theme-tab" class="active" aria-pressed="true">Canvas</button><button id="id-element-tab" aria-pressed="false">Element</button></div>
+    <div id="id-theme-settings" class="id-inspector-body"><h2>Background &amp; borders</h2>
+      <label>Background <input id="id-theme-bg" type="color"></label><label>Gradient color <input id="id-theme-surface" type="color"></label>
+      <label class="id-inline"><span>Gradient</span><input id="id-theme-gradient" type="checkbox"></label><label>Gradient angle <input id="id-theme-angle" type="range" min="0" max="360"></label>
+      <label>Text color <input id="id-theme-text" type="color"></label><label>Accent color <input id="id-theme-accent" type="color"></label><label>Border color <input id="id-theme-border" type="color"></label>
+      <label>Font <select id="id-theme-font"><option value="Georgia, serif">Georgia</option><option value="Arial, sans-serif">Arial</option><option value="'Times New Roman', serif">Times New Roman</option><option value="Verdana, sans-serif">Verdana</option><option value="Tahoma, sans-serif">Tahoma</option><option value="'Trebuchet MS', sans-serif">Trebuchet MS</option><option value="'Courier New', monospace">Courier New</option></select></label>
+      <label>Container width <input id="id-theme-width" type="number" min="260" max="900"></label><label>Padding <input id="id-theme-padding" type="range" min="0" max="80"></label><label>Border width <input id="id-theme-borderwidth" type="range" min="0" max="10"></label><label>Border style <select id="id-theme-borderstyle"><option value="solid">Solid</option><option value="double">Double</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="none">None</option></select></label><label>Corner roundness <input id="id-theme-radius" type="range" min="0" max="80"></label><label>Glow / shadow <input id="id-theme-shadow" type="range" min="0" max="70"></label><label>Default alignment <select id="id-theme-align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+      <details class="id-frame-section" open>
+        <summary>Layered border frames <span class="id-muted">Optional</span></summary>
+        <p class="id-note">Add more than one border to create a layered look. The first one is the outside border.</p>
+        <div class="id-frame-actions"><button id="id-frame-add" type="button" class="id-ghost">+ Add border frame</button><button id="id-frame-preset" type="button" class="id-ghost">Triple-frame example</button></div>
+        <div id="id-frame-list" class="id-frame-list" aria-label="Editable nested border layers"></div>
+      </details>
+      <p class="id-note">Your colors, fonts and borders are saved with your design.</p>
+    </div>
+    <div id="id-element-settings" class="id-inspector-body" hidden><h2 id="id-selected-name">Select a layer</h2>
+      <div id="id-element-form" hidden>
+        <div class="id-prop-tabs" role="tablist" aria-label="Element settings"><button id="id-prop-content" class="active" type="button" data-prop-target="content">Content</button><button id="id-prop-style" type="button" data-prop-target="style">Style</button><button id="id-prop-advanced" type="button" data-prop-target="advanced">Advanced</button></div>
+        <fieldset id="id-position-editor" class="id-position-editor" hidden><legend>Position &amp; size on canvas</legend><p>Drag and resize directly in the preview, or type exact values.</p><label id="id-text-height-wrap" class="id-height-mode" hidden>Paragraph height<select id="id-text-height-mode"><option value="auto">Auto (fit text)</option><option value="fixed">Fixed (manual)</option></select></label><div class="id-position-fields"><label>Left (%)<input id="id-pos-x" type="number" min="0" max="95" step="1"></label><label>Top (px)<input id="id-pos-y" type="number" min="0" max="3000" step="1"></label><label>Width (%)<input id="id-pos-w" type="number" min="5" max="100" step="1"></label><label>Height (px)<input id="id-pos-h" type="number" min="24" max="1200" step="1"></label></div></fieldset>
+        <label id="id-text-wrap">Element text<textarea id="id-block-text" rows="5" placeholder="Write text or use {{intro}} to pull from Content"></textarea><small>Insert {{scene}}, {{name}}, {{intro}} or {{extra}} to reuse the content fields.</small></label>
+        <label id="id-left-wrap" hidden>Left column<textarea id="id-block-left" rows="3"></textarea></label>
+        <label id="id-right-wrap" hidden>Right column<textarea id="id-block-right" rows="3"></textarea></label>
+        <label id="id-url-wrap" hidden>HTTPS image / link URL<input id="id-block-url" placeholder="https://..." autocomplete="off" spellcheck="false"><small id="id-url-status" aria-live="polite">Paste an HTTPS URL. Images update automatically.</small></label>
+        <label id="id-alt-wrap" hidden>Image description<input id="id-block-alt" placeholder="Describe this image"></label>
+        <div id="id-ratio-wrap" class="id-aspect-control" hidden><label for="id-block-ratio">Image aspect ratio</label>
+        <select id="id-block-ratio" aria-label="Image aspect ratio"><option value="original">Original image (detect)</option><option value="1 / 1">Square · 1:1</option><option value="3 / 4">Portrait · 3:4</option><option value="4 / 3">Landscape · 4:3</option><option value="9 / 16">Vertical · 9:16</option><option value="16 / 9">Wide · 16:9</option><option value="custom">Custom ratio</option></select>
+        <input id="id-ratio-custom" placeholder="Width / Height (e.g. 2 / 3)" aria-label="Custom image aspect ratio" hidden>
+        <small id="id-image-dimensions" class="id-muted" aria-live="polite">Original aspect ratio is detected from the image.</small></div>
+        <label id="id-imagewidth-wrap" hidden>Image width (%)<input id="id-block-imagewidth" type="range" min="20" max="100"></label>
+        <fieldset id="id-crop-controls" class="id-position-editor id-crop-controls" hidden><legend>Crop image on canvas</legend>
+          <p>Set Zoom above 100%, then drag the image to pan inside the frame. Alt+drag the image to move the frame itself. The eight outer handles resize the crop area.</p>
+          <div class="id-crop-actions"><button type="button" class="id-primary" id="id-crop-toggle">Crop image</button><button type="button" class="id-ghost" id="id-crop-done" hidden>Done cropping</button><button type="button" class="id-ghost" id="id-crop-reset">Reset image</button></div>
+          <label>Zoom (%)<input id="id-crop-zoom" type="range" min="100" max="400" step="1" value="115"></label>
+          <label>Horizontal focus (%)<input id="id-crop-focus-x" type="range" min="0" max="100" step="1" value="50"></label>
+          <label>Vertical focus (%)<input id="id-crop-focus-y" type="range" min="0" max="100" step="1" value="50"></label>
+          <p id="id-crop-status" aria-live="polite">Cropping uses static HTML and inline CSS, so the saved crop appears in JuicyChat too.</p>
+        </fieldset>
+        <fieldset id="id-divider-controls" class="id-position-editor" hidden><legend>Divider appearance</legend>
+          <label>Center symbol (optional)<input id="id-divider-symbol" placeholder="✦"></label>
+          <label>Line color<input id="id-divider-color" type="color"></label>
+          <label>Line thickness (px)<input id="id-divider-thickness" type="range" min="1" max="16" step="1"></label>
+          <label>Gap around symbol (px)<input id="id-divider-gap" type="range" min="0" max="40" step="1"></label>
+          <label>Divider image URL (optional)<input id="id-divider-url" placeholder="https://.../divider.png" spellcheck="false" autocomplete="off"><small id="id-divider-url-status" aria-live="polite">Paste a public HTTPS image URL to use your own divider artwork.</small></label>
+          <label>Image placement<select id="id-divider-mode"><option value="replace">Replace divider with image</option><option value="between">Image between two lines</option></select></label>
+          <label>Image width (%)<input id="id-divider-imagewidth" type="range" min="10" max="100" step="1" value="100"></label>
+        </fieldset>
+        <label id="id-spacer-wrap" hidden>Spacer height<input id="id-block-height" type="range" min="4" max="180"></label>
+        <label id="id-ordered-wrap" hidden class="id-inline"><span>Numbered list</span><input id="id-block-ordered" type="checkbox"></label>
+        <label>Font family<input id="id-block-font" type="text" placeholder="Canvas font, or Georgia, serif" spellcheck="false"></label>
+        <label>Font size<input id="id-block-size" type="range" min="9" max="72"></label>
+        <label>Alignment<select id="id-block-align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select></label>
+        <label>Weight<select id="id-block-weight"><option value="400">Regular</option><option value="600">Semibold</option><option value="700">Bold</option><option value="900">Heavy</option></select></label>
+        <label>Text color<select id="id-block-color"><option value="text">Main text</option><option value="accent">Accent</option><option value="custom">Custom</option></select><input id="id-block-customcolor" type="color" hidden></label>
+        <label>Line spacing<input id="id-block-line" type="range" min="1" max="3" step="0.05"></label>
+        <label>Inside padding<input id="id-block-padding" type="range" min="0" max="60"></label>
+        <label>Outside spacing<input id="id-block-margin" type="range" min="0" max="70"></label>
+        <label>Letter spacing<input id="id-block-spacing" type="range" min="-2" max="12" step=".5"></label>
+        <label class="id-inline"><span>Panel background</span><input id="id-block-background" type="checkbox"></label><label id="id-bgcolor-wrap">Panel color<input id="id-block-bgcolor" type="color"></label>
+        <label class="id-inline"><span>Border</span><input id="id-block-borderon" type="checkbox"></label><label>Border color<input id="id-block-bordercolor" type="color"></label><label>Border width<input id="id-block-borderwidth" type="range" min="1" max="16"></label><label>Border style<select id="id-block-borderstyle"><option value="solid">Solid</option><option value="double">Double</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="none">None</option></select></label><label>Roundness<input id="id-block-radius" type="range" min="0" max="80"></label>
+        <details class="id-effect-section"><summary>Text glow / multiple shadows</summary>
+          <label>Primary glow blur<input id="id-block-glow" type="range" min="0" max="60"></label>
+          <label>Primary glow color<input id="id-block-glowcolor" type="color"></label>
+          <label>Primary intensity<input id="id-block-glowopacity" type="range" min="0" max="1" step=".05"></label>
+          <label>Secondary glow blur<input id="id-block-glow2" type="range" min="0" max="80"></label>
+          <label>Secondary glow color<input id="id-block-glowcolor2" type="color"></label>
+          <label>Secondary intensity<input id="id-block-glowopacity2" type="range" min="0" max="1" step=".05"></label>
+        </details>
+        <label>Panel shadow<input id="id-block-shadow" type="range" min="0" max="50"></label>
+        <fieldset id="id-layer-metadata" class="id-position-editor"><legend>Layer settings</legend>
+          <label>Layer name<input id="id-layer-custom-name" placeholder="Custom layer name" maxlength="70"></label>
+          <label class="id-inline"><span>Show in canvas</span><input id="id-layer-visible" type="checkbox" checked></label>
+          <label class="id-inline"><span>Lock position</span><input id="id-layer-locked" type="checkbox"></label>
+        </fieldset>
+        <fieldset id="id-block-css-section" class="id-position-editor"><legend>Advanced inline CSS</legend>
+          <p>Imported inline styles are shown here. Edit CSS directly or use the visual Style controls. Unsafe CSS is removed when compiling.</p>
+          <textarea id="id-block-inline-css" rows="8" spellcheck="false" placeholder="font-size: 21px; color: rgb(242, 155, 203); border: 1px solid #714f79;"></textarea>
+        </fieldset>
+        <div class="id-element-actions"><button id="id-block-up" class="id-ghost">↑ Move</button><button id="id-block-down" class="id-ghost">↓ Move</button><button id="id-block-duplicate" class="id-ghost">Duplicate</button><button id="id-block-delete" class="id-ghost id-danger">Delete</button></div>
+      </div><p id="id-none-selected" class="id-note">Choose a layer on the left or click the element in the preview to style it.</p>
+    </div>
+  </aside>
+</div>
+<footer class="id-footer"><div><strong id="id-counter">0 / 15,000 characters</strong><span id="id-budget" class="id-budget">JuicyChat character limit includes the generated HTML and text.</span></div><div class="id-footer-actions"><span id="id-message" aria-live="polite"></span><button id="id-close" class="id-ghost">Close</button><button id="id-copy" class="id-primary">Copy Introduction</button><button id="id-return" class="id-primary id-highlight" hidden>Save and Return to Studio</button></div></footer>
+<script src="core.js"></script><script src="layout.js"></script><script src="creator-bridge.js"></script><script src="app.js"></script>
+</body></html>

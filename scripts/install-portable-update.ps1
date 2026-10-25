@@ -1,5 +1,3 @@
-# Portable Windows updater. Runs from userData OUTSIDE the installed application.
-# The old WebP Maker process must exit before its executable can be moved.
 param(
   [Parameter(Mandatory=$true)][int]$ParentPid,
   [Parameter(Mandatory=$true)][string]$Target,
@@ -9,47 +7,32 @@ param(
   [Parameter(Mandatory=$true)][string]$LogFile
 )
 $ErrorActionPreference = 'Stop'
-function Log([string]$message) {
-  Add-Content -LiteralPath $LogFile -Value "$(Get-Date -Format o) $message"
-}
+function Log([string]$message) { Add-Content -LiteralPath $LogFile -Value "$(Get-Date -Format o) $message" }
 try {
-  Log "Waiting for WebP Maker process $ParentPid to close"
-  for ($i=0; $i -lt 120; $i++) {
-    $old = Get-Process -Id $ParentPid -ErrorAction SilentlyContinue
-    if ($null -eq $old) { break }
+  Log "Waiting for application process $ParentPid"
+  for($i=0;$i -lt 240;$i++){
+    if(-not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)){break}
     Start-Sleep -Milliseconds 500
   }
-  if ($null -ne (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) {
-    throw 'The existing WebP Maker process did not close. Files have not been changed.'
+  if(Get-Process -Id $ParentPid -ErrorAction SilentlyContinue){throw 'App did not close; nothing was changed.'}
+  if(!(Test-Path -LiteralPath (Join-Path $Stage $Executable) -PathType Leaf)){throw 'Verified update staging is missing.'}
+  if(!(Test-Path -LiteralPath $Target -PathType Container)){throw 'Installed application folder missing.'}
+  if(Test-Path -LiteralPath $Backup){throw 'Update backup already exists.'}
+  $moved=$false
+  for($i=0;$i -lt 80;$i++){
+    try { Move-Item -LiteralPath $Target -Destination $Backup -ErrorAction Stop; $moved=$true; break }
+    catch { Start-Sleep -Milliseconds 500 }
   }
-  if (!(Test-Path -LiteralPath $Stage -PathType Container)) { throw 'Verified update staging folder is missing.' }
-  if (!(Test-Path -LiteralPath (Join-Path $Stage $Executable) -PathType Leaf)) { throw 'Updated application executable is missing.' }
-  if (!(Test-Path -LiteralPath $Target -PathType Container)) { throw 'Existing application folder is missing.' }
-  if (Test-Path -LiteralPath $Backup) { throw 'A backup folder already exists.' }
-  $renamed = $false
-  for ($i=0; $i -lt 80; $i++) {
-    try {
-      Move-Item -LiteralPath $Target -Destination $Backup -ErrorAction Stop
-      $renamed = $true
-      break
-    } catch {
-      Start-Sleep -Milliseconds 500
-    }
-  }
-  if (!$renamed) { throw 'Windows would not unlock the previous application folder. No files were replaced.' }
-  try {
-    Move-Item -LiteralPath $Stage -Destination $Target -ErrorAction Stop
-  } catch {
-    if (!(Test-Path -LiteralPath $Target) -and (Test-Path -LiteralPath $Backup)) {
+  if(!$moved){throw 'Old application folder is still locked. No files replaced.'}
+  try {Move-Item -LiteralPath $Stage -Destination $Target -ErrorAction Stop}
+  catch {
+    if(!(Test-Path -LiteralPath $Target) -and (Test-Path -LiteralPath $Backup)){
       Move-Item -LiteralPath $Backup -Destination $Target -ErrorAction Stop
     }
-    throw 'Could not install the downloaded update. Previous version restored.'
+    throw 'Failed to install verified update. Previous version restored.'
   }
-  Log 'Update installed; launching new version'
+  Log 'Installed new files; launching Juicy Chat Creator Tools'
   Start-Process -FilePath (Join-Path $Target $Executable) -WorkingDirectory $Target
-  Log 'New version started. Previous version is retained as a backup until the next launch.'
+  Log 'New app launched. Previous version remains backed up.'
   exit 0
-} catch {
-  Log "UPDATE FAILED: $_"
-  exit 1
-}
+} catch {Log "UPDATE FAILED: $_";exit 1}

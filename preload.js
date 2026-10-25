@@ -1,15 +1,21 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
-contextBridge.exposeInMainWorld('webpMaker',{
-  webpBegin:options=>ipcRenderer.invoke('webpmaker:begin',options),
-  webpFrame:png=>ipcRenderer.invoke('webpmaker:frame',png),
+contextBridge.exposeInMainWorld('juicyApp',{
+  webpBegin:opts=>ipcRenderer.invoke('webpmaker:begin',opts),
+  webpFrame:buffer=>ipcRenderer.invoke('webpmaker:frame',buffer),
   webpFinish:()=>ipcRenderer.invoke('webpmaker:finish'),
   webpCancel:()=>ipcRenderer.invoke('webpmaker:cancel'),
   webpPreview:()=>ipcRenderer.invoke('webpmaker:preview'),
-  webpSave:name=>ipcRenderer.invoke('webpmaker:save',name),
-  onWebpProgress:cb=>ipcRenderer.on('webpmaker:progress',(_,x)=>cb(x)),
-  updaterState:()=>ipcRenderer.invoke('updates:state'),
-  checkForUpdates:()=>ipcRenderer.invoke('updates:check'),
+  webpSave:filename=>ipcRenderer.invoke('webpmaker:save',filename),
+  webpNotify:status=>ipcRenderer.invoke('webpmaker:notify',status),
+  onWebpProgress:fn=>ipcRenderer.on('webpmaker:progress',(_event,x)=>fn(x)),
+  onWebpOpen:fn=>ipcRenderer.on('webpmaker:open',fn)
+});
+contextBridge.exposeInMainWorld('creatorTools',{
+  introRequest:(action,args)=>ipcRenderer.invoke('creator-tools:intro',action,args),
+  updateState:()=>ipcRenderer.invoke('updates:state'),
+  checkUpdates:()=>ipcRenderer.invoke('updates:check'),
   installUpdate:()=>ipcRenderer.invoke('updates:install'),
-  onUpdaterStatus:cb=>ipcRenderer.on('updates:status',(_,state)=>cb(state))
+  onUpdateStatus:fn=>ipcRenderer.on('updates:status',(_event,x)=>fn(x)),
+  onSelectTab:fn=>ipcRenderer.on('creator-tools:select-tab',(_event,x)=>fn(x))
 });

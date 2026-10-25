@@ -1,126 +1,148 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'none'; object-src 'none'">
-<title>WebP Maker</title><link rel="stylesheet" href="styles.css"></head><body>
-<header class="standalone-header">
-  <div class="brand-mark" aria-hidden="true">W</div>
-  <div class="wm-header-title"><div><strong>WebP Maker</strong> <span id="wm-app-version" class="wm-app-version" aria-label="Installed app version">v…</span></div>
-    <p>Local video to animated WebP · Under 9.99 MB · No uploads</p></div>
-  <div class="wm-update-tools" role="group" aria-label="Application updates">
-    <span id="wm-update-status" class="wm-update-status" role="status" aria-live="polite">Checking for updates…</span>
-    <button id="wm-update-check" type="button" class="ghost">Check for updates</button>
-    <button id="wm-update-install" type="button" class="primary" hidden>Update &amp; restart</button>
-  </div>
-</header>
-<main><section class="view active" id="view-webpmaker">
-        <div class="wm-layout">
-          <div class="panel wm-main-panel">
-            <div class="wm-compact-toolbar">
-              <div class="wm-compact-title"><strong>MP4 clips <span id="wm-count" class="wm-count">(0)</span></strong><span>Drag clips to change their order</span></div>
-              <div class="wm-toolbar-buttons"><button id="wm-add" class="secondary" type="button">+ Add MP4s</button><button id="wm-clear" class="ghost" type="button">Clear all</button></div>
-            </div>
-            <input id="wm-input" type="file" accept=".mp4,.webm,video/mp4,video/webm" multiple hidden>
-            <div id="wm-dropzone" class="wm-dropzone" role="button" tabindex="0" aria-label="Add MP4 videos by browsing or dropping files here">
-              <span class="wm-drop-icon" aria-hidden="true">⇧</span>
-              <span class="wm-drop-copy"><strong>Drop MP4 files here</strong><small>or click to select multiple videos</small></span>
-            </div>
-            <div id="wm-clips" class="wm-clips" aria-live="polite"><div class="wm-empty">Add at least two MP4s to begin.</div></div>
-            <div class="wm-settings-head"><strong>Output settings</strong><span>Animated WebP · 9.99 MB max · infinite loop · no audio</span></div>
-            <div class="wm-config">
-              <label class="wm-config-info">
-                <span class="wm-field-head"><b>Size</b><small id="wm-original-size">Original dimensions</small></span>
-                <select id="wm-size" aria-label="Output dimensions">
-                  <option value="original" selected>Original dimensions (no resizing)</option>
-                  <option value="480">480 px wide (keep aspect ratio)</option>
-                  <option value="640">640 px wide (keep aspect ratio)</option>
-                  <option value="720">720 px wide (keep aspect ratio)</option>
-                  <option value="960">960 px wide (keep aspect ratio)</option>
-                  <option value="custom">Custom dimensions (independent width × height)...</option>
-                </select>
-                <span id="wm-size-custom" class="wm-custom-size" hidden>
-                  <input id="wm-width" type="number" min="480" max="4096" placeholder="Width (min 480 px)" aria-label="Custom output width (minimum 480 pixels)">
-                  <span>×</span>
-                  <input id="wm-height" type="number" min="2" max="4096" placeholder="Height" aria-label="Custom output height">
-                </span>
-              </label>
-              <label class="wm-config-info">
-                <span class="wm-field-head"><b>Crop / aspect ratio</b><small>Applies to all clips</small></span>
-                <select id="wm-crop" aria-label="Crop the videos to an aspect ratio">
-                  <option value="fit" selected>Fit whole video (no crop)</option>
-                  <option value="16:9">Crop to 16:9 (landscape)</option>
-                  <option value="9:16">Crop to 9:16 (portrait)</option>
-                  <option value="3:4">Crop to 3:4 (portrait)</option>
-                  <option value="4:3">Crop to 4:3 (landscape)</option>
-                  <option value="1:1">Crop to 1:1 (square)</option>
-                  <option value="fill">Crop to custom output dimensions</option>
-                  <option value="freeform">Freeform (drag and resize crop)</option>
-                </select>
-                <select id="wm-crop-position" aria-label="Crop alignment" hidden>
-                  <option value="center" selected>Crop position: Center</option>
-                  <option value="top">Crop position: Top</option>
-                  <option value="bottom">Crop position: Bottom</option>
-                  <option value="left">Crop position: Left</option>
-                  <option value="right">Crop position: Right</option>
-                </select>
-                <small id="wm-output-dimensions" class="wm-output-dimensions">Output dimensions appear here</small>
-              </label>
-              <label class="wm-config-info"><span class="wm-field-head"><b>Frame rate</b><small>FPS</small></span>
-                <input id="wm-fps" type="number" min="19" max="60" step="1" value="24" aria-label="Frame rate in FPS">
-              </label>
-              <label class="wm-config-info"><span class="wm-field-head"><b>Quality</b><small>50–99</small></span>
-                <input id="wm-quality" type="number" min="50" max="99" step="1" value="80" aria-label="ImageMagick WebP quality">
-              </label>
-            </div>
-            <details id="wm-crop-preview-wrap" class="wm-crop-preview-wrap" hidden>
-              <summary>Preview the crop before converting</summary>
-              <div class="wm-crop-preview-content">
-                <label for="wm-crop-preview-clip">Preview clip</label>
-                <select id="wm-crop-preview-clip" aria-label="Select a video to preview its crop"></select>
-                <canvas id="wm-crop-preview" width="240" height="240" aria-label="Video crop preview. In Freeform mode, drag the crop to move it or drag its corners to resize." tabindex="0"></canvas>
-                <div id="wm-freeform-tools" class="wm-freeform-tools" hidden>
-                  <span id="wm-freeform-status" role="status" aria-live="polite">Drag the selection to move it; drag a corner to resize.</span>
-                  <button id="wm-freeform-reset" class="ghost" type="button">Reset this clip's crop</button>
-                </div>
-              </div>
-            </details>
-            <p class="wm-hint">Min width 480 px. Crop presets set the output ratio; Freeform lets you move and resize the crop on each clip without distortion. Custom width and height can be changed independently. When oversized, WebP Maker balances FPS and quality, stopping at 20 FPS / quality 75. It then refines quality first, FPS second, in 1-point steps. Change settings manually if the file still exceeds 9.99 MB.</p>
-            <div class="wm-actions"><button id="wm-convert" class="primary" type="button" disabled>Convert to WebP</button><button id="wm-cancel" class="ghost" type="button" hidden>Cancel conversion</button></div>
-            <div id="wm-progress-wrap" class="wm-progress-wrap" hidden aria-live="polite">
-              <div class="wm-progress-head"><strong id="wm-progress-title">Preparing...</strong><span id="wm-progress-pct">0%</span></div>
-              <div class="wm-progress-track"><div id="wm-progress-bar"></div></div>
-              <p id="wm-progress-detail">Preparing local conversion...</p>
-            </div>
-            <div id="wm-error" class="wm-error" hidden role="alert"></div>
-          </div>
-          <div class="panel wm-result-panel">
-            <div class="wm-preview-head"><h3>WebP preview</h3><button id="wm-expand" class="ghost wm-expand" type="button" disabled title="View the animation as large as your screen allows">⛶ Expand preview</button></div>
-            <div id="wm-preview-placeholder" class="wm-preview-placeholder"><span aria-hidden="true">▧</span><p>Your finished animation will appear here at full aspect ratio.</p></div>
-            <div id="wm-result" hidden>
-              <div class="wm-preview-media"><img id="wm-preview" alt="Full animated WebP preview. Click to expand." role="button" tabindex="0" title="Click to expand WebP preview"></div>
-              <div class="wm-result-toolbar">
-                <div class="wm-result-size"><strong id="wm-result-size">—</strong><span id="wm-result-badge">Under 9.99 MB</span></div>
-                <button id="wm-save" class="primary wm-save" type="button">↓ Save animated WebP</button>
-              </div>
-              <div class="wm-size-track"><div id="wm-size-bar"></div></div>
-              <details class="wm-result-advanced"><summary>Output details</summary><div id="wm-result-details" class="wm-result-details"></div></details>
-              <div id="wm-result-note" class="wm-result-note" hidden></div>
-            </div>
-            <div class="wm-footnote">Local MP4 decoding and ImageMagick encoding. No video uploads.</div>
-          </div>
-        </div>
-        <div id="wm-fullscreen" class="wm-fullscreen" hidden role="dialog" aria-modal="true" aria-label="Expanded animated WebP preview">
-          <div class="wm-fullscreen-top"><span>Animated WebP preview</span><button id="wm-fullscreen-close" class="ghost" type="button">✕ Close preview (Esc)</button></div>
-          <img id="wm-fullscreen-image" alt="Expanded animated WebP preview">
-        </div>
-      </section>
-  <div id="wm-app-notice" class="wm-app-notice" hidden role="status" aria-live="polite" aria-atomic="true">
-    <span id="wm-app-notice-icon" class="wm-app-notice-icon" aria-hidden="true">✓</span>
-    <div class="wm-app-notice-content">
-      <strong id="wm-app-notice-title">WebP Maker</strong>
-      <p id="wm-app-notice-message"></p>
-      <button id="wm-app-notice-open" type="button" class="wm-app-notice-action">View WebP</button>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; frame-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Juicy Chat Creator Tools</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="creator-tools.css">
+</head>
+<body>
+  <header class="jcct-header" role="banner">
+    <div class="jcct-identity"><div class="jcct-mark" aria-hidden="true">JC</div>
+      <div class="jcct-brand"><strong>Juicy Chat Creator Tools</strong><small>Two creator tools. One private workspace.</small></div>
+      <span id="jcct-version" class="jcct-version" aria-label="Installed application version">v1.1.6</span>
     </div>
-    <button id="wm-app-notice-close" type="button" class="wm-app-notice-close" aria-label="Dismiss WebP Maker notification" title="Dismiss notification">×</button>
-  </div>
-
-</main><script src="mp4Probe.js"></script><script src="webmProbe.js"></script><script src="frameGeometry.js"></script><script src="webpmaker.js"></script><script src="updater.js"></script></body></html>
+    <nav class="jcct-tabs" aria-label="Creator tools">
+      <button type="button" class="nav-btn active" data-view="webpmaker" data-tab="webpmaker" aria-selected="true"><span>▧</span> WebP Maker</button>
+      <button type="button" class="nav-btn" data-view="introduction" data-tab="introduction" aria-selected="false"><span>✦</span> Introduction Editor</button>
+    </nav>
+    <div class="jcct-update-actions" role="group" aria-label="Application updates">
+      <span id="jcct-update-status" role="status" aria-live="polite" class="jcct-update-status">Checking for updates...</span>
+      <button type="button" id="jcct-update-check" class="ghost">Check for updates</button>
+      <button type="button" id="jcct-update-install" class="primary" hidden>Update &amp; Restart</button>
+    </div>
+  </header>
+  <main class="main jcct-main" id="jcct-main">
+    <section class="view active" id="view-webpmaker">
+<div class="wm-layout">
+<div class="panel wm-main-panel">
+<div class="wm-compact-toolbar">
+<div class="wm-compact-title"><strong>Video clips <span class="wm-count" id="wm-count">(0)</span></strong><span>Drag clips to change their order</span></div>
+<div class="wm-toolbar-buttons"><button class="secondary" id="wm-add" type="button">+ Add videos</button><button class="ghost" id="wm-clear" type="button">Clear all</button></div>
+</div>
+<input accept=".mp4,.webm,video/mp4,video/webm" hidden="" id="wm-input" multiple="" type="file"/>
+<div aria-label="Add MP4 or WebM videos by browsing or dropping files here" class="wm-dropzone" id="wm-dropzone" role="button" tabindex="0">
+<span aria-hidden="true" class="wm-drop-icon">⇧</span>
+<span class="wm-drop-copy"><strong>Drop MP4 or WebM files here</strong><small>or click to choose one or more videos</small></span>
+</div>
+<div aria-live="polite" class="wm-clips" id="wm-clips"><div class="wm-empty">Add one video to convert, or more to merge.</div></div>
+<div class="wm-settings-head"><strong>Output settings</strong><span>Animated WebP · 9.99 MB max · infinite loop · no audio</span></div>
+<div class="wm-config">
+<label class="wm-config-info">
+<span class="wm-field-head"><b>Size</b><small id="wm-original-size">Original dimensions</small></span>
+<select aria-label="Output dimensions" id="wm-size">
+<option selected="" value="original">Original dimensions (no resizing)</option>
+<option value="480">480 px wide (keep aspect ratio)</option>
+<option value="640">640 px wide (keep aspect ratio)</option>
+<option value="720">720 px wide (keep aspect ratio)</option>
+<option value="960">960 px wide (keep aspect ratio)</option>
+<option value="custom">Custom dimensions (independent width × height)...</option>
+</select>
+<span class="wm-custom-size" hidden="" id="wm-size-custom">
+<input aria-label="Custom output width (minimum 480 pixels)" id="wm-width" max="4096" min="480" placeholder="Width (min 480 px)" type="number"/>
+<span>×</span>
+<input aria-label="Custom output height" id="wm-height" max="4096" min="2" placeholder="Height" type="number"/>
+</span>
+</label>
+<label class="wm-config-info">
+<span class="wm-field-head"><b>Crop / aspect ratio</b><small>Applies to all clips</small></span>
+<select aria-label="Crop the videos to an aspect ratio" id="wm-crop">
+<option selected="" value="fit">Fit whole video (no crop)</option>
+<option value="16:9">Crop to 16:9 (landscape)</option>
+<option value="9:16">Crop to 9:16 (portrait)</option>
+<option value="3:4">Crop to 3:4 (portrait)</option>
+<option value="4:3">Crop to 4:3 (landscape)</option>
+<option value="1:1">Crop to 1:1 (square)</option>
+<option value="fill">Crop to custom output dimensions</option>
+<option value="freeform">Freeform (drag and resize crop)</option>
+</select>
+<select aria-label="Crop alignment" hidden="" id="wm-crop-position">
+<option selected="" value="center">Crop position: Center</option>
+<option value="top">Crop position: Top</option>
+<option value="bottom">Crop position: Bottom</option>
+<option value="left">Crop position: Left</option>
+<option value="right">Crop position: Right</option>
+</select>
+<small class="wm-output-dimensions" id="wm-output-dimensions">Add videos to see output size</small>
+</label>
+<label class="wm-config-info"><span class="wm-field-head"><b>Frame rate</b><small>FPS</small></span>
+<input aria-label="Frame rate in FPS" id="wm-fps" max="60" min="19" step="1" type="number" value="24"/>
+</label>
+<label class="wm-config-info"><span class="wm-field-head"><b>Quality</b><small>50–99</small></span>
+<input aria-label="ImageMagick WebP quality" id="wm-quality" max="99" min="50" step="1" type="number" value="80"/>
+</label>
+</div>
+<details class="wm-crop-preview-wrap" hidden="" id="wm-crop-preview-wrap">
+<summary>Preview and adjust the crop before converting</summary>
+<div class="wm-crop-preview-content">
+<label for="wm-crop-preview-clip">Preview clip</label>
+<select aria-label="Select a video to preview its crop" id="wm-crop-preview-clip"></select>
+<canvas aria-label="Video crop preview. Drag to move or use corners to resize in Freeform mode." height="240" id="wm-crop-preview" tabindex="0" width="240"></canvas>
+<div class="wm-freeform-tools" hidden="" id="wm-freeform-tools">
+<span aria-live="polite" id="wm-freeform-status" role="status">Drag to move, drag the corners to resize.</span>
+<button class="ghost" id="wm-freeform-reset" type="button">Reset this clip's crop</button>
+</div>
+</div>
+</details>
+<p class="wm-hint">Minimum width 480 px. Aspect ratios 16:9, 9:16, 3:4, 4:3, and 1:1, plus per-clip Freeform cropping. Custom width and height are independent. When oversized, WebP Maker balances FPS and quality, stopping at 20 FPS / quality 75. It then refines quality first, FPS second, in 1-point steps. Change settings manually if the file still exceeds 9.99 MB.</p>
+<div class="wm-actions"><button class="primary" disabled="" id="wm-convert" type="button">Convert to WebP</button><button class="ghost" hidden="" id="wm-cancel" type="button">Cancel conversion</button></div>
+<div aria-live="polite" class="wm-progress-wrap" hidden="" id="wm-progress-wrap">
+<div class="wm-progress-head"><strong id="wm-progress-title">Preparing...</strong><span id="wm-progress-pct">0%</span></div>
+<div class="wm-progress-track"><div id="wm-progress-bar"></div></div>
+<p id="wm-progress-detail">Preparing local conversion...</p>
+</div>
+<div class="wm-error" hidden="" id="wm-error" role="alert"></div>
+</div>
+<div class="panel wm-result-panel">
+<div class="wm-preview-head"><h3>WebP preview</h3><button class="ghost wm-expand" disabled="" id="wm-expand" title="View the animation as large as your screen allows" type="button">⛶ Expand preview</button></div>
+<div class="wm-preview-placeholder" id="wm-preview-placeholder"><span aria-hidden="true">▧</span><p>Your finished animation will appear here at full aspect ratio.</p></div>
+<div hidden="" id="wm-result">
+<div class="wm-preview-media"><img alt="Full animated WebP preview. Click to expand." id="wm-preview" role="button" tabindex="0" title="Click to expand WebP preview"/></div>
+<div class="wm-result-toolbar">
+<div class="wm-result-size"><strong id="wm-result-size">—</strong><span id="wm-result-badge">Under 9.99 MB</span></div>
+<button class="primary wm-save" id="wm-save" type="button">↓ Save animated WebP</button>
+</div>
+<div class="wm-size-track"><div id="wm-size-bar"></div></div>
+<details class="wm-result-advanced"><summary>Output details</summary><div class="wm-result-details" id="wm-result-details"></div></details>
+<div class="wm-result-note" hidden="" id="wm-result-note"></div>
+</div>
+<div class="wm-footnote">Local MP4/WebM decoding and ImageMagick encoding. No video uploads.</div>
+</div>
+</div>
+<div aria-label="Expanded animated WebP preview" aria-modal="true" class="wm-fullscreen" hidden="" id="wm-fullscreen" role="dialog">
+<div class="wm-fullscreen-top"><span>Animated WebP preview</span><button class="ghost" id="wm-fullscreen-close" type="button">✕ Close preview (Esc)</button></div>
+<img alt="Expanded animated WebP preview" id="wm-fullscreen-image"/>
+</div>
+</section>
+    <section class="view jcct-editor-view" id="view-introduction" aria-label="Introduction Editor">
+      <iframe src="../introduction-designer/index.html" title="Introduction Editor" id="jcct-introduction-frame" loading="eager"></iframe>
+    </section>
+  </main>
+  <div aria-atomic="true" aria-live="polite" class="wm-app-notice" hidden="" id="wm-app-notice" role="status">
+<span aria-hidden="true" class="wm-app-notice-icon" id="wm-app-notice-icon">✓</span>
+<div class="wm-app-notice-content">
+<strong id="wm-app-notice-title">WebP Maker</strong>
+<p id="wm-app-notice-message"></p>
+<button class="wm-app-notice-action" id="wm-app-notice-open" type="button">View WebP</button>
+</div>
+<button aria-label="Dismiss WebP Maker notification" class="wm-app-notice-close" id="wm-app-notice-close" title="Dismiss notification" type="button">×</button>
+</div>
+  <script src="frameGeometry.js"></script>
+  <script src="webmProbe.js"></script>
+  <script src="mp4Probe.js"></script>
+  <script src="creator-tools.js"></script>
+  <script src="webpmaker.js"></script>
+</body>
+</html>

@@ -1,4 +1,6 @@
-// Shared, dependency-free sizing and cropping mathematics. No video is uploaded.
+// Shared crop geometry for local video-to-WebP conversion.
+// The freeform crop is stored per clip as normalized center + scale; it always
+// preserves the requested output aspect ratio so faces are never stretched.
 (function(root,factory){
   const api=factory();
   if(typeof module==='object'&&module.exports)module.exports=api;
@@ -7,84 +9,58 @@
   'use strict';
   const ratios=Object.freeze({'16:9':16/9,'9:16':9/16,'3:4':3/4,'4:3':4/3,'1:1':1});
   const position=Object.freeze({center:[.5,.5],top:[.5,0],bottom:[.5,1],left:[0,.5],right:[1,.5]});
-  const MIN_FREEFORM_SCALE=.08;
   const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
-  function outputSize(source,size,customWidth,customHeight,crop){
-    if(!source||!Number.isFinite(source.width)||!Number.isFinite(source.height)||source.width<2||source.height<2)
-      throw new Error('Select a video with valid dimensions first.');
-    const original=size==='original';
-    const custom=size==='custom';
-    const width=custom?Number(customWidth):original?source.width:Number(size);
-    const ratio=Object.hasOwn(ratios,crop)?ratios[crop]:source.width/source.height;
-    const height=custom?Number(customHeight):Math.round(width/ratio);
+  const MIN_SCALE=.08;
+  function outputSize(src,choice,w,h,crop){
+    if(!src||!Number.isFinite(src.width)||!Number.isFinite(src.height)||src.width<2||src.height<2)
+      throw new Error('Choose a video with valid dimensions first.');
+    const width=choice==='custom'?Number(w):choice==='original'?src.width:Number(choice);
+    const ratio=Object.hasOwn(ratios,crop)?ratios[crop]:src.width/src.height;
+    const height=choice==='custom'?Number(h):Math.round(width/ratio);
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<480||height<2||width>4096||height>4096)
-      throw new Error('Output width must be 480-4096 px; height must be 2-4096 px.');
+      throw new Error('Output width must be 480-4096 px and height must be 2-4096 px.');
     return {width,height};
   }
-  function validate(sourceWidth,sourceHeight,width,height){
-    if(![sourceWidth,sourceHeight,width,height].every(v=>Number.isFinite(v)&&v>0))throw new Error('Invalid crop dimensions.');
+  function region(sw,sh,w,h,selection){
+    if(![sw,sh,w,h].every(v=>Number.isFinite(v)&&v>0))throw new Error('Invalid crop geometry.');
+    const maxW=Math.min(sw,sh*w/h),maxH=maxW*h/w;
+    const scale=clamp(Number.isFinite(selection?.scale)?selection.scale:1,MIN_SCALE,1);
+    const width=maxW*scale,height=maxH*scale;
+    const halfX=width/(2*sw),halfY=height/(2*sh);
+    const cx=clamp(Number.isFinite(selection?.cx)?selection.cx:.5,halfX,1-halfX);
+    const cy=clamp(Number.isFinite(selection?.cy)?selection.cy:.5,halfY,1-halfY);
+    return {sx:cx*sw-width/2,sy:cy*sh-height/2,sw:width,sh:height,
+      dx:0,dy:0,dw:w,dh:h,cx,cy,scale};
   }
-  // Per-clip freeform rectangle: normalized center and zoom scale. The rectangle
-  // always matches output proportions, avoiding stretched or distorted frames.
-  // Output dimensions can be any independently chosen width and height.
-  function freeformRegion(sourceWidth,sourceHeight,width,height,selection=null){
-    validate(sourceWidth,sourceHeight,width,height);
-    const ratio=width/height;
-    const maxWidth=Math.min(sourceWidth,sourceHeight*ratio);
-    const maxHeight=maxWidth/ratio;
-    const raw=Number(selection?.scale);
-    const scale=Number.isFinite(raw)&&raw>0?clamp(raw,MIN_FREEFORM_SCALE,1):1;
-    const sw=maxWidth*scale,sh=maxHeight*scale;
-    const halfX=sw/(2*sourceWidth),halfY=sh/(2*sourceHeight);
-    const x=Number(selection?.cx),y=Number(selection?.cy);
-    const cx=clamp(Number.isFinite(x)?x:.5,halfX,1-halfX);
-    const cy=clamp(Number.isFinite(y)?y:.5,halfY,1-halfY);
-    return {sx:cx*sourceWidth-sw/2,sy:cy*sourceHeight-sh/2,sw,sh,dx:0,dy:0,dw:width,dh:height,cx,cy,scale};
+  function move(sw,sh,w,h,selection,dx,dy){
+    const r=region(sw,sh,w,h,selection);
+    const n=region(sw,sh,w,h,{cx:r.cx+dx,cy:r.cy+dy,scale:r.scale});
+    return {cx:n.cx,cy:n.cy,scale:n.scale};
   }
-  function moveFreeform(sourceWidth,sourceHeight,width,height,selection,dx,dy){
-    const current=freeformRegion(sourceWidth,sourceHeight,width,height,selection);
-    const result=freeformRegion(sourceWidth,sourceHeight,width,height,{cx:current.cx+dx,cy:current.cy+dy,scale:current.scale});
-    return {cx:result.cx,cy:result.cy,scale:result.scale};
+  function resize(sw,sh,w,h,selection,corner,pointerX,pointerY){
+    if(!['nw','ne','sw','se'].includes(corner))throw new Error('Invalid crop handle.');
+    const r=region(sw,sh,w,h,selection),sx=corner.endsWith('e')?1:-1,sy=corner.startsWith('s')?1:-1;
+    const fixedX=r.sx+(sx>0?0:r.sw),fixedY=r.sy+(sy>0?0:r.sh);
+    const maxW=Math.min(sw,sh*w/h),maxH=maxW*h/w;
+    const dx=(pointerX*sw-fixedX)*sx,dy=(pointerY*sh-fixedY)*sy;
+    const suggested=(dx*maxW+dy*maxH)/(maxW*maxW+maxH*maxH);
+    const maximum=Math.min(1,(sx>0?sw-fixedX:fixedX)/maxW,(sy>0?sh-fixedY:fixedY)/maxH);
+    const scale=clamp(suggested,Math.min(MIN_SCALE,maximum),maximum);
+    const n=region(sw,sh,w,h,{cx:(fixedX+sx*maxW*scale/2)/sw,
+      cy:(fixedY+sy*maxH*scale/2)/sh,scale});
+    return {cx:n.cx,cy:n.cy,scale:n.scale};
   }
-  // Resize from a corner while anchoring the opposite corner. Pointer
-  // coordinates are normalized relative to the whole source, not the preview.
-  function resizeFreeform(sourceWidth,sourceHeight,width,height,selection,corner,pointerX,pointerY){
-    validate(sourceWidth,sourceHeight,width,height);
-    if(!['nw','ne','sw','se'].includes(corner))throw new Error('Invalid crop resize handle.');
-    const current=freeformRegion(sourceWidth,sourceHeight,width,height,selection);
-    const signX=corner.endsWith('e')?1:-1,signY=corner.startsWith('s')?1:-1;
-    const fixedX=(current.sx+(signX>0?0:current.sw));
-    const fixedY=(current.sy+(signY>0?0:current.sh));
-    const ratio=width/height;
-    const maxWidth=Math.min(sourceWidth,sourceHeight*ratio),maxHeight=maxWidth/ratio;
-    const offsetX=(pointerX*sourceWidth-fixedX)*signX;
-    const offsetY=(pointerY*sourceHeight-fixedY)*signY;
-    const desired=(offsetX*maxWidth+offsetY*maxHeight)/(maxWidth*maxWidth+maxHeight*maxHeight);
-    const roomX=(signX>0?sourceWidth-fixedX:fixedX)/maxWidth;
-    const roomY=(signY>0?sourceHeight-fixedY:fixedY)/maxHeight;
-    const maximum=Math.min(1,roomX,roomY);
-    const scale=clamp(desired,Math.min(MIN_FREEFORM_SCALE,maximum),maximum);
-    const cropWidth=maxWidth*scale,cropHeight=maxHeight*scale;
-    const result=freeformRegion(sourceWidth,sourceHeight,width,height,{
-      cx:(fixedX+signX*cropWidth/2)/sourceWidth,
-      cy:(fixedY+signY*cropHeight/2)/sourceHeight,
-      scale
-    });
-    return {cx:result.cx,cy:result.cy,scale:result.scale};
-  }
-  function rect(sourceWidth,sourceHeight,width,height,crop='fit',where='center',selection=null){
-    validate(sourceWidth,sourceHeight,width,height);
-    if(crop==='freeform')return freeformRegion(sourceWidth,sourceHeight,width,height,selection);
+  function rect(sw,sh,w,h,crop='fit',where='center',selection=null){
+    if(![sw,sh,w,h].every(v=>Number.isFinite(v)&&v>0))throw new Error('Invalid crop dimensions.');
+    if(crop==='freeform')return region(sw,sh,w,h,selection);
     const [ax,ay]=position[where]||position.center;
     if(crop==='fit'){
-      const scale=Math.min(width/sourceWidth,height/sourceHeight);
-      const drawW=sourceWidth*scale,drawH=sourceHeight*scale;
-      return {sx:0,sy:0,sw:sourceWidth,sh:sourceHeight,dx:(width-drawW)/2,dy:(height-drawH)/2,dw:drawW,dh:drawH};
+      const scale=Math.min(w/sw,h/sh),dw=sw*scale,dh=sh*scale;
+      return {sx:0,sy:0,sw,sh,dx:(w-dw)/2,dy:(h-dh)/2,dw,dh};
     }
-    const target=width/height,source=sourceWidth/sourceHeight;
-    const sw=source>target?sourceHeight*target:sourceWidth;
-    const sh=source>target?sourceHeight:sourceWidth/target;
-    return {sx:(sourceWidth-sw)*ax,sy:(sourceHeight-sh)*ay,sw,sh,dx:0,dy:0,dw:width,dh:height};
+    const target=w/h,source=sw/sh;
+    const cw=source>target?sh*target:sw,ch=source>target?sh:sw/target;
+    return {sx:(sw-cw)*ax,sy:(sh-ch)*ay,sw:cw,sh:ch,dx:0,dy:0,dw:w,dh:h};
   }
-  return {ratios,outputSize,rect,freeformRegion,moveFreeform,resizeFreeform,MIN_FREEFORM_SCALE};
+  return {ratios,position,outputSize,rect,region,move,resize};
 });

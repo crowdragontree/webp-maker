@@ -1,49 +1,116 @@
-# WebP Maker: Windows and Linux
+# Juicy Chat Creator Tools v1.1.6
 
-Standalone MP4/WebM to animated WebP app. Import two or more video clips, drag to reorder them, and save one infinitely looping animated WebP **under 9.99 MB (9,990,000 bytes)**. All video conversion happens on the user's computer.
+**Quick start:** Extract the source ZIP, run the existing build workflow to create the desktop app, then open **WebP Maker**. A single MP4 now enables **Convert to WebP**. Add more videos only when you want to merge them. The Introduction Editor is the second tab. Its **Fit content** button shrinks the background to the actual content. No coding knowledge is needed for designing an introduction.
 
-## Download the app
+The ZIP contains **source files**, not a prebuilt installer. Automatic updates for people running older versions require a published, correctly named GitHub Release build.
 
-Open **Releases** on the [WebP Maker GitHub repository](https://github.com/crowdragontree/webp-maker/releases) and choose:
+---
 
-- **Windows 64-bit:** `WebP-Maker-Windows-x64.zip` → extract → launch `WebP-Maker.exe`. ImageMagick can be prepared automatically on first use (requires internet once).
-- **Linux 64-bit (x86_64):** `WebP-Maker-Linux-x64.zip` → extract → run `WebP-Maker`. This ZIP **includes portable ImageMagick**, with no additional install and no internet needed for video conversion. Keep the entire extracted application folder together. Depending on your file manager, right-click the executable and choose **Allow executing as program**, or run `chmod +x WebP-Maker` in that folder.
+# Directional Drag-and-Drop Reordering
 
-No macOS download is provided. Linux support targets standard x86_64 desktop distributions. ARM devices aren't included.
+Drag-and-drop now behaves like a vertical insertion/reorder, rather than pushing every collided element downward.
 
-*The first GitHub Actions build makes temporary downloadable artifacts. A repository owner must publish the ZIPs under Releases before the links above work.*
+- Drag an element DOWN: crossed elements shift UP into its previous slots.
+- Drag an element UP: crossed elements shift DOWN to fill its previous slot.
+- The currently dragged element alone follows the pointer until mouse release.
+- Original vertical gaps and element sizes are preserved. Uncrossed elements and independent side-by-side columns stay in place.
+- Rows containing multiple side-by-side elements move together when a full-width element is reordered.
+- Auto reorder is enabled by default; uncheck it for intentionally overlapping layers.
+- Reordering can be reversed without accumulated displacement. The revised position survives autosave, templates, and formatted HTML export.
+- Existing crop, URL image previews, divider controls, eight resize handles, custom HTML import, syntax highlighting, and WebP Maker are unchanged.
+
+Tested with real Chromium mouse events moving the Scene Name down across Character Name and Divider, then dragging Scene Name back up to restore the exact original arrangement. Also tested repeated operations, side-by-side columns, row groups, empty gaps, explicit overlap opt-out, saved layout, and HTML output.
+
+Native Windows and Linux desktop executables still require platform-specific GitHub build verification.
+
+---
+
+## Earlier release notes (historical)
+# Introduction Editor: Auto Make Room on Drop
+
+Fixed the drag-and-drop overlap shown in the reported screenshots.
+
+- **Auto make room is ON by default**, including when opening older saved drafts without this setting.
+- **While dragging:** the selected item follows the pointer; no neighboring item moves.
+- **On release:** the selected item stays where it was dropped; overlapping items are pushed downward, and any additional collisions are resolved in sequence. Unaffected items keep their exact positions. Side-by-side elements stay untouched.
+- You can turn off Auto make room when you intentionally want layered elements to overlap. This does not affect Crop mode, which pans images within their crop frame.
+- Supports drag from the element palette, existing layers, and on-canvas manipulation. All eight resize handles, alignment guides, divider image URLs, styled-border import, crop tools, and syntax-highlighted HTML remain available.
+- Exact positions are preserved in reusable templates, autosaved drafts, the formatted Introduction HTML, and Studio's Save and Return flow. The 15,000-character check continues to use the full exported HTML.
+
+### Verified
+- Browser pointer-drag tests: collision-free motion until release, selected item preserved, collision cascades, opt-out overlap, autosave and formatted HTML export.
+- Pure collision engine tests: cascading displacement, independent columns, unchanged untouched layers, safe failure at the maximum canvas height.
+- Existing Introduction Designer, WebP Maker, and Blueprint Studio checks must still pass. Windows/Linux desktop executables require platform-native GitHub Actions build verification.
+
+# Visual Introduction Editor - Image Cropping and Canvas Controls
+
+- CROP IMAGES ON THE CANVAS: Select an image or an image-backed divider, then click Crop image in the Element inspector. Move the picture inside the crop frame with the mouse; zoom with the mouse wheel or an editable Zoom slider. Focus sliders and number fields provide precise control.
+- Use all eight existing resize handles to adjust the visible crop area, including from any edge or corner. The original HTTPS image URL stays unchanged and Reset image removes the crop.
+- Crop, image focus, zoom, and selected element position persist in local drafts and saved templates. Copy Introduction and Save and Return export static HTML with inline styles, no editor overlays or scripts. The 15,000-character limit still counts the actual formatted export.
+- REPAIRED CANVAS DRAGGING: Moving or resizing an element affects only that element. Existing elements are not displaced, even when crossing or overlapping them. The optional Prevent overlap checkbox is off by default.
+- Smart alignment guides consider left/center/right and top/middle/bottom positions for the canvas and nearby elements instead of only the left edge. Hold Alt during drag to bypass snapping.
+- Existing visual editor features remain: nested border frames, divider image URLs, natural source image proportions when not cropped, HTML import with inline styles, color-coded HTML, generic placeholders, eight resize handles, and typeable numeric sliders.
+
+The browser designer works offline after opening its HTML file. Direct HTTPS image URLs are requested from their image hosts when used. Desktop executables still require platform build validation.
+
+# Introduction Editor: Visual Canvas & HTML Import Fixes
+
+- Resize any selected element using all eight handles: corners and sides. The opposite side stays anchored.
+- Drag-and-drop moves only the selected element. Other elements never get pushed or reordered; collisions are rejected, and snap guides help alignment.
+- Select an element and press Delete/Backspace or use its separate, unobtrusive on-canvas Delete control.
+- Dividers now support a decorative HTTPS image URL, immediate preview, optional placement between two lines, and adjustable image width.
+- Images default to their original aspect ratio, not a forced 3:4 crop. URL edits refresh the image preview automatically.
+- Import nested HTML into editable visual layers with the original author-supplied inline styles intact, preserving colored border frames, corner radii, backgrounds, inset shadows, typography, glows and image URLs.
+- Imported artwork is immediately converted to a freely movable canvas with positions captured after images load.
+- HTML source editing and generated code previews are syntax-highlighted, with distinct tag, attribute and value colors.
+- All slider values are typeable, and exported Introduction HTML remains neatly formatted with a 15,000-character ceiling.
+- Generic default content: Scene Name, Character Name, Introduction, Extra Text.
+
+All processing is local except loading any HTTPS image URLs that the user chooses to paste. No scripts enter the exported Introduction HTML.
+
+
+# Juicy Chat Creator Tools v1.1.2
+
+**WebP Maker + Introduction Editor in a single Windows/Linux desktop app.**
 
 ## What's included
 
-- Electron's HTML5 MP4/WebM decoder with detection of VP9/WebM streams mislabeled `.mp4` (common in ComfyUI/AI-generated exports). **No separate FFmpeg executable.**
-- ImageMagick encoding of independent full frames, with adaptive quality allocation between clips to reduce block artifacts.
-- Default **24 FPS** and **quality 80**. Fit (no crop) retains the original ratio; explicit crop presets are **16:9, 9:16, 3:4, 4:3 and 1:1**. Preset crops can be aligned center/top/bottom/left/right and previewed before conversion. **Freeform** shows the whole source frame with a draggable, corner-resizable crop rectangle. Each video clip has its own selection and a Reset button; selections retain the output ratio so frames are never stretched. Minimum output width **480 px**. Custom width and height can be edited independently (e.g. 480 × 640).
-- Automatic optimization within the selected FPS/quality protection limits, hard 9.99 MB cap, no audio, and infinite looping.
-- Cached decoded PNG frames for retries; local crop preview, finished WebP preview and Save button.
-- Installed version display and in-app check for new versions, with Update & Restart for newer published GitHub Releases. Existing v1.0.2 installs can update to v1.0.3 once it is published.
-- No accounts, API keys, telemetry, uploaded videos, or Studio-related code.
+### WebP Maker
+- Merge and reorder MP4 or WebM/VP9 clips into one animated WebP under 9.99 MB.
+- ImageMagick-based quality optimization, 24 FPS/quality 80 defaults and automatic size refinement.
+- Cropping presets: 16:9, 9:16, 3:4, 4:3 and 1:1, plus individually adjustable freeform crops.
+- Fully local video processing, animation preview, and Save WebP.
 
-## Build both downloadable apps on GitHub
+### Introduction Editor
+- Fully visual drag-and-drop editor with **smart snapping and non-overlapping layouts**. Dragging or resizing changes **only the selected element**; it snaps to available space without moving the others.
+- Live **direct HTTPS image URL** preview with loading/failed-link messages. Image-specific URL fields appear only for image elements.
+- Four generic text fields: Scene Name, Character Name, Introduction, Extra Text.
+- Reusable templates, nested border frames, gradients, glows, individually typeable slider values, and formatted HTML.
+- 15,000-character HTML + text limit; Copy Introduction to paste in JuicyChat.
+- Standalone Introduction Editor in this app does not return to Juicy Blueprint Studio. Studio has its own Save and Return integration.
 
-1. Upload the source files to the **root** of the repository (the folder holding `package.json`). The workflow also supports an existing `WebP-Maker` subfolder if files are already there.
-2. In the repository, edit `.github/workflows/windows-build.yml` to match the supplied file. This workflow builds both Windows and Linux automatically whenever changes are committed to `main`. It can also be launched manually from the **Actions** tab as **Build WebP Maker for Windows and Linux**.
-3. When both jobs finish, open the workflow run and download the two files under **Artifacts**.
-4. Create a GitHub **Release** and attach the Windows and Linux ZIPs so people can download them easily.
+## Building Windows / Linux releases
 
-The workflow downloads the [official ImageMagick 7.1.2-34 Linux AppImage](https://github.com/ImageMagick/ImageMagick/releases/tag/7.1.2-34), checks its SHA-256, tests its extracted launcher, and bundles it in the Linux app. ImageMagick is extracted to a private user-data folder once at runtime to avoid requiring FUSE or an administrator password. All encoding remains local.
+1. Upload this **extracted source folder's contents** to the `crowdragontree/webp-maker` GitHub repository, including `.github`.
+2. Select **Actions → Build Juicy Chat Creator Tools (Windows and Linux)**.
+3. Both Windows and Linux jobs must pass all required source and actual MP4-to-WebP conversion tests.
+4. Download the generated artifacts. Extract the outer GitHub artifact ZIP and obtain `WebP-Maker-Windows-x64.zip` and `WebP-Maker-Linux-x64.zip`.
+5. Publish a **v1.1.2** release with those two inner ZIPs as release assets, using their existing filenames.
 
-## Run from source
+**Compatibility:** The packaged executable remains `WebP-Maker.exe` / `WebP-Maker` solely to support existing WebP Maker installations using the GitHub automatic updater. The application window/title/taskbar name is **Juicy Chat Creator Tools**. Version 1.1.2 is higher than the previous WebP Maker 1.0.3. Do not rename the release asset ZIPs or the executable inside the build folders.
 
-**Windows:** Double-click `START_WEBP_MAKER.bat`. The first run can download private runtime components. Or use `npm install` then `npm start` if Node.js is available.
+The Windows and Linux workflows download and SHA-256-verify the official ImageMagick 7.1.2-34 binaries and bundle them with the portable app. No extra ImageMagick install is required, and videos stay local.
 
-**Linux:** Install Node.js 22+, then run `npm install && npm start` in this source folder. For source development, ImageMagick must be on your PATH (or set `JBS_WEBP_MAGICK` to its executable); the **GitHub-built Linux download already includes it**.
+## Local source use
 
-## Security and license
+From this source folder, run `npm install` and `npm start` with Node.js 22.12+ installed. The published Windows/Linux ZIPs do **not** require Node or npm.
 
-Only the standalone WebP Maker source is included. Do not upload Studio account information or other private files. The Linux build includes the official ImageMagick AppImage and its upstream licensing; see [ImageMagick's license](https://imagemagick.org/script/license.php). You can choose your own appropriate license for the WebP Maker source. Linux and Windows builds are unsigned and may show operating-system security warnings.
+This project contains no private files, character profiles, or user video data.
 
-## Notes
 
-- Some videos cannot meet 9.99 MB without lowering quality or FPS. In that situation the app stops and asks for manual changes rather than silently resizing.
-- The built-in ImageMagick Linux binary is **x86_64 only**. macOS, Linux ARM, and mobile devices are not currently supported.
-- The Windows portable ImageMagick bootstrap still uses the pinned official release URL in `resources/webpmaker/setup-webpmaker.ps1`.
+Introduction Editor canvas fixes (October 25, 2026):
+- Click an element in the preview and press Delete or Backspace, or use its on-canvas × button. Text inputs are unaffected.
+- Free-position dragging and resizing move only the selected block; neighboring elements retain their positions. The selected block snaps into available space rather than pushing everything else.
+- Dividers have their own symbol, line color, thickness, and gap controls. Text typography controls are hidden when editing a divider.
+- New images retain their original aspect ratio by default (auto / contain), rather than 3:4.
+- The 15,000-character check and exported inline HTML remain unchanged; editor-only controls never enter the copied code.

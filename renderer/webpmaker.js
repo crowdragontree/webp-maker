@@ -1,9 +1,9 @@
-// WebP Maker. MP4 frames are decoded locally by Electron, then ImageMagick encodes the WebP.
-// No FFmpeg dependency or uploads; changes to dimensions or crop happen only when selected.
+// WebP Maker: locally decode MP4 and WebM (including mislabeled VP9/ComfyUI files).
+// ImageMagick encodes the 9.99 MB WebP. No uploads and no FFmpeg dependency.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const api = window.webpMaker;
+  const api = window.juicyApp;
   const geometry=window.webpFrameGeometry;
   const ids=['wm-input','wm-dropzone','wm-add','wm-clear','wm-clips','wm-count','wm-size','wm-size-custom','wm-width','wm-height','wm-fps','wm-quality',
     'wm-original-size','wm-crop','wm-crop-position','wm-output-dimensions','wm-crop-preview-wrap','wm-crop-preview','wm-crop-preview-clip','wm-freeform-tools','wm-freeform-status','wm-freeform-reset','wm-convert','wm-cancel','wm-progress-wrap','wm-progress-title','wm-progress-pct','wm-progress-bar','wm-progress-detail',
@@ -65,7 +65,7 @@
   function clearResult(){ready=false;previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');}
   function busy(isBusy){
     converting=!!isBusy;
-    $('wm-convert').disabled=isBusy||clips.length<2;
+    $('wm-convert').disabled=isBusy||clips.length===0;
     $('wm-convert').textContent=isBusy?'Converting...':'Convert to WebP';
     $('wm-cancel').hidden=!isBusy;
     $('wm-clear').disabled=isBusy;
@@ -90,95 +90,92 @@
     const opt=$('wm-size').querySelector('option[value="original"]');
     if(opt)opt.textContent=c?`Original (${c.width} × ${c.height})`:'Original dimensions (no resizing)';
     const select=$('wm-crop-preview-clip');
-    const selected=select.value;
+    const previouslySelected=select.value;
     select.replaceChildren();
     for(const clip of clips){
-      const opt=document.createElement('option');opt.value=String(clip.instanceId);opt.textContent=clip.name;select.append(opt);
+      const item=document.createElement('option');item.value=String(clip.instanceId);item.textContent=clip.name;
+      select.append(item);
     }
-    if(Array.from(select.options).some(o=>o.value===selected))select.value=selected;
+    if(Array.from(select.options).some(x=>x.value===previouslySelected))select.value=previouslySelected;
     updateSizeUI();
   }
   function dimensions(){
-    if(!clips.length)throw new Error('Add videos first.');
+    if(!clips.length)throw new Error('Add video clips first.');
     return geometry.outputSize(clips[0],$('wm-size').value,$('wm-width').value,$('wm-height').value,$('wm-crop').value);
   }
-  function previewClip(){
-    return clips.find(c=>String(c.instanceId)===$('wm-crop-preview-clip').value)||clips[0]||null;
-  }
-  // Preview uses the complete source frame in Freeform mode so the editable
-  // rectangle can be dragged and resized. Fixed-ratio modes preview the output.
+  function previewClip(){return clips.find(c=>String(c.instanceId)===$('wm-crop-preview-clip').value)||clips[0]||null;}
   function drawCropPreview(){
     const details=$('wm-crop-preview-wrap');
     if(details.hidden||!details.open||!clips.length)return;
     const clip=previewClip();if(!clip)return;
     if(clip.video.readyState<2){clip.video.addEventListener('loadeddata',drawCropPreview,{once:true});return;}
-    let size;
-    try{size=dimensions();}catch{return;}
+    let output;try{output=dimensions();}catch{return;}
     const canvas=$('wm-crop-preview'),freeform=$('wm-crop').value==='freeform';
     canvas.dataset.freeform=String(freeform);
-    const aspect=freeform?clip.width/clip.height:size.width/size.height;
+    const aspect=freeform?clip.width/clip.height:output.width/output.height;
     const maxWidth=freeform?340:240,maxHeight=freeform?290:240;
     const scale=Math.min(maxWidth/(aspect>=1?aspect:1),maxHeight/(aspect>=1?1:1/aspect));
-    const previewWidth=Math.max(40,Math.round(scale*(aspect>=1?aspect:1)));
-    const previewHeight=Math.max(40,Math.round(scale*(aspect>=1?1:1/aspect)));
-    if(canvas.width!==previewWidth)canvas.width=previewWidth;
-    if(canvas.height!==previewHeight)canvas.height=previewHeight;
+    const pw=Math.max(40,Math.round(scale*(aspect>=1?aspect:1)));
+    const ph=Math.max(40,Math.round(scale*(aspect>=1?1:1/aspect)));
+    if(canvas.width!==pw)canvas.width=pw;
+    if(canvas.height!==ph)canvas.height=ph;
     const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)return;
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
     ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);
     if(freeform){
-      const region=geometry.freeformRegion(clip.width,clip.height,size.width,size.height,clip.freeformSelection);
+      const crop=geometry.region(clip.width,clip.height,output.width,output.height,clip.freeformSelection);
       const fx=canvas.width/clip.width,fy=canvas.height/clip.height;
-      const x=region.sx*fx,y=region.sy*fy,w=region.sw*fx,h=region.sh*fy;
+      const x=crop.sx*fx,y=crop.sy*fy,w=crop.sw*fx,h=crop.sh*fy;
       try{ctx.drawImage(clip.video,0,0,canvas.width,canvas.height);}catch{}
-      // Darken the excluded area; show the selected portion at full brightness.
-      ctx.fillStyle='rgba(0,0,0,0.64)';ctx.fillRect(0,0,canvas.width,canvas.height);
-      try{ctx.drawImage(clip.video,region.sx,region.sy,region.sw,region.sh,x,y,w,h);}catch{}
-      ctx.strokeStyle='#f6d7ff';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,Math.max(0,w-2),Math.max(0,h-2));
-      ctx.strokeStyle='rgba(19,9,25,.65)';ctx.lineWidth=1;
+      ctx.fillStyle='rgba(0,0,0,.64)';ctx.fillRect(0,0,canvas.width,canvas.height);
+      try{ctx.drawImage(clip.video,crop.sx,crop.sy,crop.sw,crop.sh,x,y,w,h);}catch{}
+      ctx.strokeStyle='#f6d7ff';ctx.lineWidth=2;
+      ctx.strokeRect(x+1,y+1,Math.max(0,w-2),Math.max(0,h-2));
       for(const [hx,hy] of [[x,y],[x+w,y],[x,y+h],[x+w,y+h]]){
-        const hx0=Math.max(5,Math.min(canvas.width-5,hx)),hy0=Math.max(5,Math.min(canvas.height-5,hy));
-        ctx.fillStyle='#f8e6ff';ctx.fillRect(hx0-5,hy0-5,10,10);ctx.strokeRect(hx0-5.5,hy0-5.5,11,11);
+        const px=Math.max(5,Math.min(canvas.width-5,hx));
+        const py=Math.max(5,Math.min(canvas.height-5,hy));
+        ctx.fillStyle='#f8e6ff';ctx.fillRect(px-5,py-5,10,10);
+        ctx.strokeStyle='#26102e';ctx.lineWidth=1;ctx.strokeRect(px-5.5,py-5.5,11,11);
       }
-      $('wm-freeform-status').textContent=`${clip.name}: ${Math.round(region.sw)} x ${Math.round(region.sh)} source pixels selected. Drag inside to move; drag corner handles to resize. Each clip has its own crop.`;
+      $('wm-freeform-status').textContent=`${clip.name}: ${Math.round(crop.sw)} × ${Math.round(crop.sh)} source pixels selected. Drag inside to move; drag a corner to resize. Each clip has its own crop.`;
     }else{
       const r=geometry.rect(clip.width,clip.height,canvas.width,canvas.height,$('wm-crop').value,$('wm-crop-position').value);
       try{ctx.drawImage(clip.video,r.sx,r.sy,r.sw,r.sh,r.dx,r.dy,r.dw,r.dh);}catch{}
     }
   }
   function canvasPoint(event){
-    const canvas=$('wm-crop-preview'),bounds=canvas.getBoundingClientRect();
-    return {x:Math.max(0,Math.min(1,(event.clientX-bounds.left)/bounds.width)),
-      y:Math.max(0,Math.min(1,(event.clientY-bounds.top)/bounds.height))};
+    const b=$('wm-crop-preview').getBoundingClientRect();
+    return {x:Math.max(0,Math.min(1,(event.clientX-b.left)/b.width)),
+      y:Math.max(0,Math.min(1,(event.clientY-b.top)/b.height))};
   }
-  function cropHit(clip,point,size){
-    const canvas=$('wm-crop-preview'),r=geometry.freeformRegion(clip.width,clip.height,size.width,size.height,clip.freeformSelection);
+  function cropHit(clip,point,output){
+    const canvas=$('wm-crop-preview');
+    const r=geometry.region(clip.width,clip.height,output.width,output.height,clip.freeformSelection);
     const x=r.sx/clip.width,y=r.sy/clip.height,w=r.sw/clip.width,h=r.sh/clip.height;
     const corners={nw:[x,y],ne:[x+w,y],sw:[x,y+h],se:[x+w,y+h]};
-    let match=null,dist=Infinity;
+    let match=null,distance=Infinity;
     for(const [key,[cx,cy]] of Object.entries(corners)){
-      const px=(cx-point.x)*canvas.getBoundingClientRect().width;
-      const py=(cy-point.y)*canvas.getBoundingClientRect().height;
-      const d=Math.hypot(px,py);
-      if(d<dist){dist=d;match=key;}
+      const bounds=canvas.getBoundingClientRect();
+      const d=Math.hypot((cx-point.x)*bounds.width,(cy-point.y)*bounds.height);
+      if(d<distance){distance=d;match=key;}
     }
-    if(dist<=14)return match;
+    if(distance<=14)return match;
     return point.x>=x&&point.x<=x+w&&point.y>=y&&point.y<=y+h?'move':'outside';
   }
   function cropPointerDown(event){
     if(converting||event.button!==0||$('wm-crop').value!=='freeform')return;
     const clip=previewClip();if(!clip)return;
-    let size;try{size=dimensions();}catch{return;}
+    let output;try{output=dimensions();}catch{return;}
     const point=canvasPoint(event);
-    let mode=cropHit(clip,point,size);
+    let mode=cropHit(clip,point,output);
     if(mode==='outside'){
-      const current=geometry.freeformRegion(clip.width,clip.height,size.width,size.height,clip.freeformSelection);
-      clip.freeformSelection=geometry.moveFreeform(clip.width,clip.height,size.width,size.height,
+      const current=geometry.region(clip.width,clip.height,output.width,output.height,clip.freeformSelection);
+      clip.freeformSelection=geometry.move(clip.width,clip.height,output.width,output.height,
         {cx:point.x,cy:point.y,scale:current.scale},0,0);
       mode='move';clearResult();drawCropPreview();
     }
-    const start=geometry.freeformRegion(clip.width,clip.height,size.width,size.height,clip.freeformSelection);
-    cropPointerDrag={id:event.pointerId,clip,mode,point,start:{cx:start.cx,cy:start.cy,scale:start.scale},size};
+    const current=geometry.region(clip.width,clip.height,output.width,output.height,clip.freeformSelection);
+    cropPointerDrag={id:event.pointerId,clip,mode,point,start:{cx:current.cx,cy:current.cy,scale:current.scale},output};
     $('wm-crop-preview').setPointerCapture(event.pointerId);
     event.preventDefault();
   }
@@ -188,19 +185,17 @@
     const point=canvasPoint(event);
     if(!cropPointerDrag||cropPointerDrag.id!==event.pointerId){
       try{
-        const size=dimensions();const mode=cropHit(clip,point,size);
-        $('wm-crop-preview').style.cursor=mode==='move'?'move':mode==='outside'?'crosshair':
-          (mode==='nw'||mode==='se')?'nwse-resize':'nesw-resize';
+        const hit=cropHit(clip,point,dimensions());
+        $('wm-crop-preview').style.cursor=hit==='move'?'move':hit==='outside'?'crosshair':
+          (hit==='nw'||hit==='se')?'nwse-resize':'nesw-resize';
       }catch{}
       return;
     }
-    const d=cropPointerDrag;if(d.clip!==clip)return;
-    let result;
-    if(d.mode==='move')result=geometry.moveFreeform(clip.width,clip.height,d.size.width,d.size.height,
-      d.start,point.x-d.point.x,point.y-d.point.y);
-    else result=geometry.resizeFreeform(clip.width,clip.height,d.size.width,d.size.height,
-      d.start,d.mode,point.x,point.y);
-    clip.freeformSelection=result;
+    const drag=cropPointerDrag;if(drag.clip!==clip)return;
+    const size=drag.output;
+    clip.freeformSelection=drag.mode==='move'
+      ?geometry.move(clip.width,clip.height,size.width,size.height,drag.start,point.x-drag.point.x,point.y-drag.point.y)
+      :geometry.resize(clip.width,clip.height,size.width,size.height,drag.start,drag.mode,point.x,point.y);
     clearResult();drawCropPreview();event.preventDefault();
   }
   function cropPointerEnd(event){
@@ -210,15 +205,16 @@
     if(canvas.hasPointerCapture?.(event.pointerId))canvas.releasePointerCapture(event.pointerId);
   }
   function updateSizeUI(){
-    const selected=$('wm-size').value,crop=$('wm-crop').value;
-    $('wm-size-custom').hidden=selected!=='custom';
+    const choice=$('wm-size').value,crop=$('wm-crop').value;
+    $('wm-size-custom').hidden=choice!=='custom';
     $('wm-crop-position').hidden=crop==='fit'||crop==='freeform';
-    $('wm-freeform-tools').hidden=crop!=='freeform'||!clips.length;
     $('wm-crop-preview-wrap').hidden=crop==='fit'||!clips.length;
+    $('wm-freeform-tools').hidden=crop!=='freeform'||!clips.length;
     if(crop==='freeform'&&clips.length)$('wm-crop-preview-wrap').open=true;
-    if(selected==='custom'&&clips.length){
+    if(choice==='custom'&&clips.length){
       if(!Number($('wm-width').value)||!Number($('wm-height').value)){
-        $('wm-width').value=clips[0].width;$('wm-height').value=clips[0].height;
+        $('wm-width').value=clips[0].width;
+        $('wm-height').value=clips[0].height;
       }
     }
     if(!clips.length){$('wm-output-dimensions').textContent='Choose videos to see output size';return;}
@@ -234,11 +230,11 @@
     const n=document.createElement('span');n.className='wm-clip-num';n.textContent=String(i+1).padStart(2,'0');
     const description=document.createElement('div');description.className='wm-clip-copy';
     const name=document.createElement('strong');name.textContent=clip.name;
-    const details=document.createElement('small');details.textContent=`${clip.width} × ${clip.height} · ${clip.duration.toFixed(2)}s · ${formatBytes(clip.bytes)}${clip.container==='webm'?' · WebM video':''}`;
+    const details=document.createElement('small');details.textContent=`${clip.width} × ${clip.height} · ${clip.duration.toFixed(2)}s · ${formatBytes(clip.bytes)}${clip.container==='webm'?' · VP9/WebM':''}`;
     description.append(name,details);
     const controls=document.createElement('div');controls.className='wm-clip-buttons';
     for(const [glyph,label,disabled,callback] of [
-      ['↑','Move up',i===0,()=>move(i,i-1)],['↓','Move down',i===clips.length-1,()=>move(i,i+1)],['×','Remove MP4',false,()=>removeClip(i)]]) {
+      ['↑','Move up',i===0,()=>move(i,i-1)],['↓','Move down',i===clips.length-1,()=>move(i,i+1)],['×','Remove video',false,()=>removeClip(i)]]) {
       const b=document.createElement('button');b.className='ghost';b.type='button';b.textContent=glyph;b.title=label;
       b.setAttribute('aria-label',`${label}: ${clip.name}`);b.disabled=disabled||converting;b.addEventListener('click',callback);controls.append(b);
     }
@@ -253,22 +249,22 @@
   function render(){
     $('wm-count').textContent=`(${clips.length})`;
     $('wm-clips').replaceChildren();
-    if(!clips.length){const p=document.createElement('div');p.className='wm-empty';p.textContent='Choose at least two MP4 files to begin.';$('wm-clips').append(p);}
+    if(!clips.length){const p=document.createElement('div');p.className='wm-empty';p.textContent='Add one video to convert it, or more to merge them.';$('wm-clips').append(p);}
     else clips.forEach((c,i)=>$('wm-clips').append(row(c,i)));
-    $('wm-convert').disabled=converting||clips.length<2;
+    $('wm-convert').disabled=converting||clips.length===0;
     resetSize();
   }
   function removeClip(i){if(converting)return;const [c]=clips.splice(i,1);untrack(c);clearError();clearResult();render();}
   function move(from,to){if(converting||from===to||from<0||to<0||to>=clips.length)return;const [c]=clips.splice(from,1);clips.splice(to,0,c);clearResult();render();}
-  // ComfyUI/JC sometimes exports VP9/WebM streams with an .mp4 filename,
-  // no Duration element, and Infinity for HTMLVideoElement.duration. Detect
-  // the real container and recover exact duration from WebM block timecodes.
+  // Some AI video tools produce WebM/VP9 streams with a .mp4 extension and
+  // no duration element. Inspect the real container, then give Chromium the
+  // matching MIME hint. The original file bytes are not modified or uploaded.
   function loadMetadata(file){
     return new Promise((resolve,reject)=>{
       if(!file.size){reject(new Error(`${file.name} is empty.`));return;}
-      let url=null,probe={},container='mp4';
-      const video=document.createElement('video');video.muted=true;video.preload='auto';video.playsInline=true;
-      let timer=null,seekTimer=null,done=false,triedSeek=false;
+      let url=null,probe={},container='mp4',timer=null,seekTimer=null,done=false,triedSeek=false;
+      const video=document.createElement('video');
+      video.muted=true;video.preload='auto';video.playsInline=true;
       function cleanup(){
         clearTimeout(timer);clearTimeout(seekTimer);
         for(const event of ['loadedmetadata','loadeddata','durationchange','canplay','seeked'])video.removeEventListener(event,check);
@@ -280,22 +276,16 @@
         if(url)URL.revokeObjectURL(url);
         reject(new Error(message));
       }
-      function bad(){
-        fail(`Unsupported or unreadable video format in ${file.name}. WebP Maker accepts normal MP4 and VP9 WebM video.`);
-      }
+      function bad(){fail(`Unsupported or unreadable video format in ${file.name}. Try a standard MP4 or VP9 WebM file.`);}
       function duration(){
-        // The WebM probe gets the LAST FRAME plus its duration. Seeking to
-        // 1e9 only returns the last frame's PTS and can truncate an animation.
         if(container==='webm'&&Number.isFinite(probe.duration)&&probe.duration>0)return probe.duration;
         if(Number.isFinite(video.duration)&&video.duration>0)return video.duration;
         if(Number.isFinite(probe.duration)&&probe.duration>0)return probe.duration;
         if(video.seekable?.length){
           try{const end=video.seekable.end(video.seekable.length-1);
-            if(Number.isFinite(end)&&end>0)return end;
-          }catch{}
+            if(Number.isFinite(end)&&end>0)return end;}catch{}
         }
-        if(triedSeek&&!video.seeking&&video.readyState>=2&&video.currentTime>0&&video.currentTime<1e9)
-          return video.currentTime;
+        if(triedSeek&&!video.seeking&&video.readyState>=2&&video.currentTime>0&&video.currentTime<1e9)return video.currentTime;
         return null;
       }
       function check(){
@@ -306,27 +296,23 @@
         if(!width||!height||!Number.isFinite(seconds)||seconds<=0)return;
         done=true;cleanup();
         resolve({file,url,video,name:file.name,bytes:file.size,width,height,duration:seconds,container,
-          key:[file.name,file.size,file.lastModified].join('|'),instanceId:++clipInstanceSerial});
+          key:[file.name,file.size,file.lastModified].join('|'),instanceId:++clipInstanceSerial,freeformSelection:null});
       }
       for(const event of ['loadedmetadata','loadeddata','durationchange','canplay','seeked'])video.addEventListener(event,check);
       video.addEventListener('error',bad,{once:true});
       (async()=>{
-        // Probes only read bytes from the local File. No upload or conversion.
         const webm=await (window.webpWebmProbe?.probeWebm?.(file)||Promise.resolve(null)).catch(()=>null);
         if(done)return;
         if(webm?.container==='webm'){
           container='webm';probe=webm;
-          // Correct MIME for WebM streams mislabeled as .mp4. The byte-for-byte
-          // video is unchanged; only Chromium's media hint is corrected.
           url=URL.createObjectURL(new Blob([file],{type:'video/webm'}));
         }else{
-          container='mp4';
           url=URL.createObjectURL(file);
-          (window.webpMp4Probe?.probeMp4?.(file)||Promise.resolve({})).then(info=>{if(!done){probe=info||{};check();}}).catch(()=>{});
+          (window.webpMp4Probe?.probeMp4?.(file)||Promise.resolve({})).then(info=>{
+            if(!done){probe=info||{};check();}
+          }).catch(()=>{});
         }
-        timer=setTimeout(()=>fail(`Unable to read video metadata for ${file.name}. The format, codec or duration may be unsupported.`),25000);
-        // For valid MP4s only, an extreme seek recovers the duration when the
-        // MP4 header and normal media events have no usable value.
+        timer=setTimeout(()=>fail(`Unable to read metadata for ${file.name}. The codec or duration may be unsupported.`),25000);
         if(container==='mp4')seekTimer=setTimeout(()=>{
           if(done||Number.isFinite(video.duration)||video.readyState<1)return;
           triedSeek=true;try{video.currentTime=1e9;}catch{}
@@ -341,7 +327,7 @@
     try{
       const picked=Array.from(files);
       if(picked.some(f=>!/\.(mp4|webm)$/i.test(f.name)))throw new Error('Choose MP4 or WebM video files.');
-      if(clips.length+picked.length>30)throw new Error('Choose up to 30 MP4 clips.');
+      if(clips.length+picked.length>30)throw new Error('Choose up to 30 video clips.');
       const known=new Set(clips.map(f=>f.key));
       for(const file of picked){
         const key=[file.name,file.size,file.lastModified].join('|');
@@ -358,72 +344,67 @@
     if(converting)return;
     addFiles(Array.from(event.dataTransfer?.files||[]));
   }
-  // On some VP9/WebM clips, `seeked` fires before the frame is submitted to
-  // the compositor. Wait for the decoded frame so each MP4 in a multi-clip
-  // session contributes moving frames, not one repeated still image.
+  // Seek completion may precede presentation of a VP9 frame. Wait for a
+  // compositor frame where available; fall back after 100ms if a duplicated
+  // 16 FPS source frame prevents Chromium from issuing another callback.
   function seek(video,seconds){
     return new Promise((resolve,reject)=>{
       let timeout,settleTimer,frameId=null,settled=false,seeked=false,frame=null;
       function cleanup(){
-        clearTimeout(timeout);clearTimeout(settleTimer);video.removeEventListener('seeked',onSeeked);video.removeEventListener('error',fail);
-        if(frameId!==null&&video.cancelVideoFrameCallback)try{video.cancelVideoFrameCallback(frameId);}catch{}
+        clearTimeout(timeout);clearTimeout(settleTimer);
+        video.removeEventListener('seeked',onSeeked);video.removeEventListener('error',fail);
+        if(frameId!==null&&video.cancelVideoFrameCallback){try{video.cancelVideoFrameCallback(frameId);}catch{}}
       }
       function done(){if(settled)return;settled=true;cleanup();resolve();}
-      function fail(){if(settled)return;settled=true;cleanup();reject(new Error('Could not decode a frame from this video.'));}
+      function fail(){if(settled)return;settled=true;cleanup();reject(new Error('Could not decode a frame from the video.'));}
       function acceptFrame(_,metadata){
-        frameId=null;
-        if(settled)return;
-        const actual=Number(metadata?.mediaTime);
-        if(Number.isFinite(actual)&&Math.abs(actual-seconds)>0.35){
+        frameId=null;if(settled)return;
+        const current=Number(metadata?.mediaTime);
+        if(Number.isFinite(current)&&Math.abs(current-seconds)>.35){
           if(!video.seeking&&seeked){
-            settled=true;cleanup();reject(new Error(`Video decoder returned a stale frame at ${actual.toFixed(2)}s instead of ${seconds.toFixed(2)}s. This clip was not converted into a frozen slideshow.`));
+            settled=true;cleanup();reject(new Error(`Video decoder returned a stale frame (${current.toFixed(2)}s vs ${seconds.toFixed(2)}s). Conversion stopped to avoid a slideshow.`));
             return;
           }
           frameId=video.requestVideoFrameCallback(acceptFrame);return;
         }
-        frame=metadata||{};
-        if(seeked)done();
+        frame=metadata||{};if(seeked)done();
       }
       function onSeeked(){
         seeked=true;
         if(frame!==null||typeof video.requestVideoFrameCallback!=='function')done();
-        else settleTimer=setTimeout(()=>{
-          // Chrome sometimes does not submit a *new* compositor frame when
-          // consecutive 24 FPS seeks land on the same 16 FPS VP9 source frame.
-          // `seeked` and HAVE_CURRENT_DATA are sufficient in that case.
-          if(!video.seeking&&video.readyState>=2)done();
-        },90);
+        else settleTimer=setTimeout(()=>{if(!video.seeking&&video.readyState>=2)done();},100);
       }
       video.addEventListener('seeked',onSeeked,{once:true});video.addEventListener('error',fail,{once:true});
-      timeout=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error('Video frame decoding timed out. Conversion stopped rather than exporting still frames.'));},15000);
+      timeout=setTimeout(()=>{
+        if(settled)return;settled=true;cleanup();
+        reject(new Error('Video frame decoding timed out. Conversion stopped rather than exporting a slideshow.'));
+      },15000);
       try{
         if(typeof video.requestVideoFrameCallback==='function')frameId=video.requestVideoFrameCallback(acceptFrame);
         video.currentTime=seconds;
-        if(!video.seeking&&video.readyState>=2&&Math.abs(video.currentTime-seconds)<0.0001){
-          onSeeked();
-        }
+        if(!video.seeking&&video.readyState>=2&&Math.abs(video.currentTime-seconds)<.0001)onSeeked();
       }catch(e){settled=true;cleanup();reject(e);}
     });
   }
   function png(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not render a PNG frame.')),'image/png'));}
   async function capture(clip,count,settings,canvas,ctx,frameOffset,total){
     const v=clip.video;const {width,height,fps}=settings;
-    const crop=geometry.rect(clip.width,clip.height,width,height,settings.crop,settings.position,settings.selection);
+    const r=geometry.rect(clip.width,clip.height,width,height,settings.crop,settings.position,settings.selection);
     for(let i=0;i<count;i++){
       if(cancelled)throw new Error('Conversion cancelled.');
       const time=Math.min(Math.max(0,clip.duration-0.002), (i+.5)/fps);
       await seek(v,time);
       if(cancelled)throw new Error('Conversion cancelled.');
       ctx.fillStyle='#000000';ctx.fillRect(0,0,width,height);
-      ctx.drawImage(v,crop.sx,crop.sy,crop.sw,crop.sh,crop.dx,crop.dy,crop.dw,crop.dh);
+      ctx.drawImage(v,r.sx,r.sy,r.sw,r.sh,r.dx,r.dy,r.dw,r.dh);
       const data=await (await png(canvas)).arrayBuffer();
       await api.webpFrame(data);
       const complete=frameOffset+i+1;
-      if(complete%5===0||complete===total)progress({title:'Decoding MP4 videos',detail:`${complete} of ${total} frames captured at ${width} × ${height}.`,percent:5+Math.floor(49*complete/total)});
+      if(complete%5===0||complete===total)progress({title:'Decoding video clips',detail:`${complete} of ${total} frames captured at ${width} × ${height}.`,percent:5+Math.floor(49*complete/total)});
     }
   }
   async function convert(){
-    if(converting||clips.length<2)return;
+    if(converting||clips.length===0)return;
     dismissNotice();clearError();clearResult();navStatus('idle');
     let width,height,fps,quality,crop,position;
     try{
@@ -442,24 +423,20 @@
       if(expectedFrames>MAX_FRAMES)throw new Error(`That frame rate would create ${expectedFrames} frames. Choose a lower FPS (${MAX_FRAMES} maximum) or use shorter clips.`);
       if(width>4096||height>4096)throw new Error('Output dimensions must be 4096 pixels or smaller on each side.');
       cancelled=false;busy(true);navStatus('running');$('wm-progress-wrap').hidden=false;
-      progress({title:'Starting conversion',detail:'Decoding MP4s inside Electron. No FFmpeg and no uploads.',percent:0});
+      progress({title:'Starting conversion',detail:'Decoding local video inside Electron. No FFmpeg and no uploads.',percent:0});
       // Source IDs include the clip order. Cached frames are never reused for
       // different videos, a different order, or a different output size.
       const cropModes=['fit','16:9','9:16','3:4','4:3','1:1','fill','freeform'];
       const positions=['center','top','bottom','left','right'];
-      // Crop changes must invalidate lossless decoded-frame cache, including
-      // independent manual selections on each source clip.
-      // The backend deliberately accepts only numeric clip identifiers.
-      // Store each coordinate as a fixed-precision integer to preserve that
-      // validation while ensuring any manual crop change clears the cache.
-      const selectionKeys=crop==='freeform'?clips.flatMap(c=>{
-        const r=geometry.freeformRegion(c.width,c.height,width,height,c.freeformSelection);
-        return [r.cx,r.cy,r.scale].map(x=>String(Math.round(x*1000000)));
+      const selections=crop==='freeform'?clips.flatMap(c=>{
+        const region=geometry.region(c.width,c.height,width,height,c.freeformSelection);
+        return [region.cx,region.cy,region.scale].map(x=>String(Math.round(x*1000000)));
       }):[];
-      const sourceKey=[...clips.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selectionKeys].join(',');
+      // Numeric IDs only: the backend uses numeric validation for frame keys.
+      const sourceKey=[...clips.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections].join(',');
       const prepared=await api.webpBegin({width,height,fps,quality,expectedFrames,clipFrames:counts,sourceKey});
       if(prepared.cached){
-        progress({title:'Reusing decoded MP4 frames',detail:`${prepared.cachedFrames} lossless frames already captured at ${prepared.sourceFps} FPS. No new MP4 decoding.`,percent:54});
+        progress({title:'Reusing decoded video frames',detail:`${prepared.cachedFrames} lossless frames already captured at ${prepared.sourceFps} FPS. No new video decoding.`,percent:54});
       }else{
         const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
         const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
@@ -467,7 +444,7 @@
         ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
         let offset=0;
         for(let i=0;i<clips.length;i++){
-          progress({title:'Decoding MP4 videos',detail:`Clip ${i+1} of ${clips.length}: ${clips[i].name}`,percent:5+Math.floor(49*offset/expectedFrames)});
+          progress({title:'Decoding video clips',detail:`Clip ${i+1} of ${clips.length}: ${clips[i].name}`,percent:5+Math.floor(49*offset/expectedFrames)});
           await capture(clips[i],counts[i],{width,height,fps,crop,position,selection:clips[i].freeformSelection},canvas,ctx,offset,expectedFrames);
           offset+=counts[i];
         }
@@ -495,7 +472,7 @@
       ready=true;
       progress({title:'Conversion complete',detail:'Animated WebP ready to preview and save.',percent:100});
       navStatus('complete');notify('complete');
-    }catch(e){if(!cancelled){const message=String(e?.message||e||'');error(message.includes('still exceeds 9.99 MB')?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no MP4 re-decoding is needed.':e);navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}}}
+    }catch(e){if(!cancelled){const message=String(e?.message||e||'');error(message.includes('still exceeds 9.99 MB')?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':e);navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}}}
     finally{if(cancelled)navStatus('idle');busy(false);render();}
   }
   async function save(){
@@ -516,38 +493,28 @@
   $('wm-size').addEventListener('change',()=>{
     clearResult();
     if($('wm-size').value==='custom'&&clips.length){
-      // Prefill with the *previously displayed* size, not the source ratio.
-      // Switching to custom must not silently reset a selected 3:4 crop.
-      const previous=$('wm-output-dimensions').textContent.match(/Output (\d+) × (\d+)/);
-      if(previous){$('wm-width').value=previous[1];$('wm-height').value=previous[2];}
+      const prior=$('wm-output-dimensions').textContent.match(/Output (\d+) × (\d+)/);
+      if(prior){$('wm-width').value=prior[1];$('wm-height').value=prior[2];}
     }
     updateSizeUI();
   });
   $('wm-crop').addEventListener('change',()=>{
     const crop=$('wm-crop').value;
     if(crop==='freeform'&&clips.length){
-      // Preserve the exact last output size when switching from a ratio preset.
-      // Users can also set independent output dimensions at any time.
-      const prior=$('wm-output-dimensions').textContent.match(/Output (\d+) \u00d7 (\d+)/);
-      if(prior){
-        $('wm-size').value='custom';
-        $('wm-width').value=prior[1];$('wm-height').value=prior[2];
-      }
+      const prior=$('wm-output-dimensions').textContent.match(/Output (\d+) × (\d+)/);
+      if(prior){$('wm-size').value='custom';$('wm-width').value=prior[1];$('wm-height').value=prior[2];}
     }
     if(Object.hasOwn(geometry.ratios,crop)){
       if($('wm-size').value==='original')$('wm-size').value='480';
       if($('wm-size').value==='custom'){
         const w=Math.max(480,Number($('wm-width').value)||480);
-        $('wm-width').value=w;
-        $('wm-height').value=Math.round(w/geometry.ratios[crop]);
+        $('wm-width').value=w;$('wm-height').value=Math.round(w/geometry.ratios[crop]);
       }
     }
     clearResult();updateSizeUI();
   });
   $('wm-crop-position').addEventListener('change',()=>{clearResult();drawCropPreview();});
   for(const id of ['wm-width','wm-height'])$(id).addEventListener('input',()=>{
-    // Editing either field NEVER changes the other one. The resulting aspect
-    // ratio becomes an explicitly custom crop, not a misleading preset.
     if(Object.hasOwn(geometry.ratios,$('wm-crop').value))$('wm-crop').value='fill';
     clearResult();updateSizeUI();
   });
@@ -558,7 +525,8 @@
   $('wm-crop-preview').addEventListener('pointerup',cropPointerEnd);
   $('wm-crop-preview').addEventListener('pointercancel',cropPointerEnd);
   $('wm-freeform-reset').addEventListener('click',()=>{
-    if(converting)return;const clip=previewClip();if(!clip)return;
+    if(converting)return;
+    const clip=previewClip();if(!clip)return;
     clip.freeformSelection=null;clearResult();drawCropPreview();
   });
   $('wm-expand').addEventListener('click',()=>previewFullscreen(true));

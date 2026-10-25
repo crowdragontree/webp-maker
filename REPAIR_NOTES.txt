@@ -1,0 +1,39 @@
+Introduction Designer maintenance repair (no new feature release)
+
+What was corrected:
+- Replacing an HTTPS image URL keeps the existing image frame's x/y/width/height
+  and does not silently push the image to the bottom.
+- Detected image proportions are shown as Original image (ratio), with explicit
+  1:1, 3:4, 4:3, 9:16, 16:9, and custom ratio choices.
+- Cropping, explicit aspect controls, imported image CSS, image previews and
+  layered borders remain supported.
+- Deleting an element reclaims the vacated slot and recalculates canvas height.
+- Clicking empty canvas/workspace or pressing Escape clears selected handles.
+- Undo/Redo buttons and Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z work for document actions.
+- The HTML editor's Use pasted HTML / Return / Use visual blocks actions are
+  kept in a single top toolbar, visible while scrolling the HTML editor.
+- The Structure sidebar is less cluttered; visibility and locking controls
+  remain in the Inspector, and the Structure order tracks canvas reordering.
+
+This is a source-code maintenance repair, NOT a compiled Windows/Linux release.
+The Blueprint Studio editions have version metadata 1.2.0 as requested.
+Other component version metadata was not increased.
+WebP Maker logic was not changed.
+
+How to use:
+- Browser: open Introduction_Designer_1.2.0_FIXED.html directly.
+- Creator Tools: replace the GitHub source with the contents of the Creator
+  Tools archive; run the existing GitHub Actions build workflow.
+- Blueprint Studio (Personal / Shareable): replace the matching edition's
+  source folder with the corresponding archive and follow its existing README.
+- Desktop Introduction Designer: replace desktop source with its archive.
+  This is not a Windows executable until built by the supplied workflow.
+
+Tests performed:
+- Node editor test suites for HTML compilation, layout, snapping, auto-height.
+- Headless Chromium editor interactions: edit URL in moved image; image
+  placement retained; detected source ratio; crop/pan/resize; undo/redo;
+  deletion compaction/height reset; deselect; HTML toolbar; nested frame
+  import and Inspector text binding.
+
+Always back up your current app/draft and templates before replacing source.
