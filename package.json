@@ -7,7 +7,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node scripts/selftest.js && node scripts/webp-crop-selftest.js && node scripts/webp-single-clip-selftest.js && node introduction-designer/tests/core.test.js && node introduction-designer/tests/layout.test.js && node scripts/designer-host-selftest.js && node introduction-designer/tests/make-room.test.js && node introduction-designer/tests/reorder-drop.test.js && node introduction-designer/tests/auto-height-centers.test.js"
+    "check": "node scripts/selftest.js && node scripts/webp-crop-selftest.js && node scripts/webp-single-clip-selftest.js && node introduction-designer/tests/core.test.js && node introduction-designer/tests/layout.test.js && node scripts/designer-host-selftest.js && node introduction-designer/tests/make-room.test.js && node introduction-designer/tests/reorder-drop.test.js && node introduction-designer/tests/auto-height-centers.test.js",
+    "package:win": "electron-packager . WebP-Maker --platform=win32 --arch=x64 --out=release --overwrite --prune=true --executable-name=WebP-Maker --icon=assets/icon.ico --ignore=^/release$ --ignore=^/dist$ --ignore=^/.github$",
+    "package:linux": "electron-packager . WebP-Maker --platform=linux --arch=x64 --out=release --overwrite --prune=true --executable-name=WebP-Maker --icon=assets/icon.png --ignore=^/release$ --ignore=^/dist$ --ignore=^/.github$"
   },
   "devDependencies": {
     "electron": "32.3.3",
