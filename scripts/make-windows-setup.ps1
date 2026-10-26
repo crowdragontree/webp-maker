@@ -24,6 +24,7 @@ $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zip))
 
 # 2. The installer script. {{PAYLOAD}} is replaced with the base64 zip.
 $installer = @'
+param([string]$Target,[switch]$NoLaunch)
 $ErrorActionPreference = 'Stop'
 $exeName='JuicyChat Creator Tool.exe'; $legacy='WebP-Maker.exe'
 function Info($m){ Write-Host $m }
@@ -49,9 +50,11 @@ try {
   Start-Sleep 1
 
   # Locate the existing install folder (contains resources\app\package.json).
-  $target=$null
-  $fromArg=$args | Where-Object { $_ -like '--target=*' } | Select-Object -First 1
-  if($fromArg){ $target=$fromArg.Substring('--target='.Length) }
+  $target=$Target
+  if(-not $target){
+    $fromArg=$args | Where-Object { $_ -like '--target=*' } | Select-Object -First 1
+    if($fromArg){ $target=$fromArg.Substring('--target='.Length) }
+  }
   if(-not $target){
     $c=@()
     foreach($exe in @($legacy,$exeName)){
@@ -97,7 +100,7 @@ try {
     }
   }
 
-  if(-not ($args -contains '--no-launch')){ Start-Process -FilePath $newExe -WorkingDirectory $target }
+  if(-not ($NoLaunch -or ($args -contains '--no-launch'))){ Start-Process -FilePath $newExe -WorkingDirectory $target }
   Start-Sleep 3
   Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
