@@ -1,4 +1,4 @@
-# Juicy Chat Creator Tools v1.1.6
+# Juicy Chat Creator Tools v1.1.0
 
 This repaired source keeps the app's existing version number.
 

@@ -1,4 +1,4 @@
-# Juicy Chat Creator Tools v1.1.6
+# Juicy Chat Creator Tools v1.1.0
 
 **Quick start:** Extract the source ZIP, run the existing build workflow to create the desktop app, then open **WebP Maker**. A single MP4 now enables **Convert to WebP**. Add more videos only when you want to merge them. The Introduction Editor is the second tab. Its **Fit content** button shrinks the background to the actual content. No coding knowledge is needed for designing an introduction.
 

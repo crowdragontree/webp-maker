@@ -1,0 +1,22 @@
+Juicy Chat Creator Tools v1.1.0 - GitHub repository repair
+
+Repository: crowdragontree/webp-maker
+Do not rename, move, or create a new repository.
+
+Changes from the uploaded source archive:
+* Only version literals were reset to v1.1.0 in seven metadata/UI/test/doc files.
+* Renamed the combined-app GitHub workflow to .github/workflows/windows-build.yml, replacing the older standalone workflow of the same path.
+* Added version + entrypoint preflight checks to Windows/Linux jobs.
+* All other application source files and fixtures are identical to the uploaded source.
+* Includes the two-tab main.js and its matching creator-tools E2E entrypoint from the uploaded project.
+
+TO APPLY:
+1. Extract the ZIP. Upload/commit the extracted files into the existing webp-maker repository's main branch, keeping folder structure. Do not upload the ZIP as a single file.
+2. Replace the existing root main.js and scripts/e2e-desktop.js as included.
+3. Replace .github/workflows/windows-build.yml.
+4. If you have .github/workflows/build-creator-tools.yml in the repository, DELETE that older duplicate workflow, leaving windows-build.yml as the single build workflow.
+5. Run Actions > Build Juicy Chat Creator Tools v1.1.0 (Windows and Linux).
+
+Local validation: npm run check + JS syntax + YAML structure.
+A passing Windows/Linux packaged-app E2E run must still be confirmed in GitHub Actions.
+No existing VP9/WebM codecs, probing logic, fixtures, or test assertions were edited.

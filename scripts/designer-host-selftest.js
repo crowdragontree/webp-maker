@@ -7,7 +7,7 @@ const {create,ALLOWED}=require('../introduction-designer/inline-host');
   const folder=fs.mkdtempSync(path.join(os.tmpdir(),'creator-tools-intro-test-'));
   try{
     let copied='',closed=0;
-    const service=create({app:{getPath:()=>folder,getVersion:()=> '1.1.6'},clipboard:{writeText:s=>copied=s},dialog:{},onClose:()=>closed++});
+    const service=create({app:{getPath:()=>folder,getVersion:()=> '1.1.0'},clipboard:{writeText:s=>copied=s},dialog:{},onClose:()=>closed++});
     assert(ALLOWED.has('copy')&&!ALLOWED.has('arbitrary:ipc'));
     const boot=await service.handle('bootstrap');assert(!boot.embedded&&boot.templates.length===0);
     const doc=Core.initial();const html=Core.compile(doc,{formatted:true});

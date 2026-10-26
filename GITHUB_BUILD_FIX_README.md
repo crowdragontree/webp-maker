@@ -1,7 +1,13 @@
-# GitHub Actions build repair
+# GitHub Actions repair (October 25, 2026)
 
-Use `.github/workflows/build-creator-tools.yml` from this ZIP in the root of the **Juicy Chat Creator Tools** repository (on the `main` branch). Do not use the standalone `Build WebP Maker` workflow: its fixture paths and CLI flags belong to another app and will fail against this repository. Disable or delete the outdated workflow if it is still present.
+Your failing workflow displays `npm error Missing script: "package:win"` on Windows and `npm error Missing script: "package:linux"` on Linux. This source package adds both scripts to package.json without changing the application version.
 
-Corrected workflow builds Windows and Linux from this repository, checks the existing VP9 video fixtures, bundles ImageMagick, runs source checks, launches the packaged Electron app for conversion E2E testing, and uploads ZIP artifacts.
+## Correct upload to crowdragontree/webp-maker
+1. Extract this ZIP. Upload the CONTENTS of the extracted folder to the repository's ROOT, not the ZIP itself and not a subfolder. The GitHub root must show package.json, main.js, renderer/, introduction-designer/, scripts/, resources/, assets/, and .github/workflows/build-creator-tools.yml.
+2. Remove the obsolete GitHub workflow under .github/workflows/ that runs `Locate WebP Maker files` and `Build portable Windows app`. On GitHub's Code tab open that workflow YAML and use the three-dot menu > Delete file > Commit changes. The old workflow is for a different folder layout and may still fail or publish the wrong application. Do not delete build-creator-tools.yml.
+3. Go to Actions and run `Build Juicy Chat Creator Tools (Windows and Linux)` (or commit on main and watch it run automatically). Wait for BOTH required platform build-and-conversion tests to pass.
+4. Download the two artifacts. The extracted inner release ZIPs must be `WebP-Maker-Windows-x64.zip` and `WebP-Maker-Linux-x64.zip` for compatibility with the existing portable updater.
 
-Caveat: GitHub-hosted Windows/Linux runs and ImageMagick downloads were not executed in this environment. Workflow syntax and file paths were checked. The upload to your GitHub repository has not been performed.
+The new workflow bundles official ImageMagick binaries and tests a packaged conversion; simply defining missing scripts alone does not verify that the old legacy workflow will pass its end-to-end checks.
+
+No application version number was changed. package.json remains version 1.1.0.
