@@ -1,7 +1,7 @@
 {
   "name": "juicy-chat-creator-tools",
   "productName": "Juicy Chat Creator Tools",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Juicy Chat Creator Tools: WebP Maker and Introduction Editor with smart snapping and live image previews",
   "main": "main.js",
