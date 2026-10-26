@@ -1,4 +1,4 @@
-name: Build Juicy Chat Creator Tools v1.1.0 (Windows and Linux)
+name: Build Juicy Chat Creator Tools (Windows and Linux)
 on:
   push:
     branches: [main]
@@ -14,9 +14,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Check fixed version and combined entrypoint
+      - name: Check version and combined entrypoint
         run: |
-          node -e "const fs=require('fs');const p=require('./package.json');if(p.version!=='1.1.0'||!fs.readFileSync('main.js','utf8').includes('createIntroService'))process.exit(1);console.log('PASS: v1.1.0 combined entrypoint')"
+          node -e "const fs=require('fs');const p=require('./package.json');if(!/^\d+\.\d+\.\d+$/.test(p.version)||!fs.readFileSync('main.js','utf8').includes('createIntroService'))process.exit(1);console.log('PASS: v'+p.version+' combined entrypoint')"
       - name: Install and run source regression tests (REQUIRED)
         shell: pwsh
         run: |
@@ -52,11 +52,32 @@ jobs:
           if ($proc.ExitCode -ne 0 -or -not $report.ok) { throw (Get-Content $env:CREATOR_TOOLS_E2E_REPORT -Raw) }
           if ($report.bytes -gt 9990000 -or $report.frames -lt 30 -or $report.width -ne 480 -or $report.height -ne 640) { throw 'Invalid WebP result.' }
           Write-Host "PASS: Windows packaged app $($report.frames) frames; moving frames by clip $($report.unique)."
+      - name: TEST old WebP-Maker.exe name hands over to JuicyChat Creator Tool.exe (REQUIRED)
+        shell: pwsh
+        run: |
+          # Older installed copies only accept an update containing WebP-Maker.exe and restart that file.
+          $dir=(Resolve-Path 'dist/Juicy Chat Creator Tools-win32-x64').Path
+          Copy-Item -LiteralPath (Join-Path $dir 'JuicyChat Creator Tool.exe') -Destination (Join-Path $dir 'WebP-Maker.exe')
+          $env:CREATOR_TOOLS_E2E_REPORT = Join-Path $env:RUNNER_TEMP 'creator-tools-win-handover.json'
+          $env:JBS_WEBP_MAGICK = ''
+          $legacy=Start-Process -FilePath (Join-Path $dir 'WebP-Maker.exe') -ArgumentList '--creator-tools-e2e' -PassThru
+          if (-not $legacy.WaitForExit(60000)) { Stop-Process -Id $legacy.Id -Force; throw 'WebP-Maker.exe did not hand over to JuicyChat Creator Tool.exe.' }
+          $deadline=(Get-Date).AddMinutes(7)
+          do { Start-Sleep -Seconds 2 } while (((-not (Test-Path $env:CREATOR_TOOLS_E2E_REPORT)) -or (Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue)) -and (Get-Date) -lt $deadline)
+          Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (!(Test-Path $env:CREATOR_TOOLS_E2E_REPORT)) { throw 'Hand-over test: JuicyChat Creator Tool.exe never finished the conversion.' }
+          $report=Get-Content $env:CREATOR_TOOLS_E2E_REPORT -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw (Get-Content $env:CREATOR_TOOLS_E2E_REPORT -Raw) }
+          if (!(Test-Path (Join-Path $dir 'WebP-Maker.exe'))) { throw 'WebP-Maker.exe must stay in the release for older updaters.' }
+          Write-Host 'PASS: WebP-Maker.exe hands over to JuicyChat Creator Tool.exe, which converted successfully.'
       - name: Create Windows portable ZIP
         shell: pwsh
         run: |
           Compress-Archive -Path 'dist/Juicy Chat Creator Tools-win32-x64/*' -DestinationPath 'WebP-Maker-Windows-x64.zip' -Force
           if (!(Test-Path 'WebP-Maker-Windows-x64.zip')) { throw 'Windows release ZIP missing' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path 'WebP-Maker-Windows-x64.zip').Path); $names=$zip.Entries.FullName; $zip.Dispose()
+          foreach ($n in 'JuicyChat Creator Tool.exe','WebP-Maker.exe','resources/app/package.json') { if ($names -notcontains $n) { throw "Release ZIP is missing $n" } }
       - uses: actions/upload-artifact@v4
         with:
           name: Juicy-Chat-Creator-Tools-Windows-x64
@@ -70,9 +91,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Check fixed version and combined entrypoint
+      - name: Check version and combined entrypoint
         run: |
-          node -e "const fs=require('fs');const p=require('./package.json');if(p.version!=='1.1.0'||!fs.readFileSync('main.js','utf8').includes('createIntroService'))process.exit(1);console.log('PASS: v1.1.0 combined entrypoint')"
+          node -e "const fs=require('fs');const p=require('./package.json');if(!/^\d+\.\d+\.\d+$/.test(p.version)||!fs.readFileSync('main.js','utf8').includes('createIntroService'))process.exit(1);console.log('PASS: v'+p.version+' combined entrypoint')"
       - name: Install and run source regression tests (REQUIRED)
         run: |
           npm install --no-audit --no-fund
@@ -100,11 +121,34 @@ jobs:
             'dist/Juicy Chat Creator Tools-linux-x64/JuicyChat Creator Tool' --no-sandbox --disable-gpu --creator-tools-e2e
           test -s "$CREATOR_TOOLS_E2E_REPORT"
           node -e 'const r=require(process.env.CREATOR_TOOLS_E2E_REPORT); if(!r.ok||r.bytes>9990000||r.frames<30||r.width!==480||r.height!==640)process.exit(1); console.log("PASS: Linux packaged app",r.frames,"frames; moving frames by clip",r.unique)'
+      - name: TEST old WebP-Maker name hands over to JuicyChat Creator Tool (REQUIRED)
+        run: |
+          # Older installed copies only accept an update containing WebP-Maker and restart that file.
+          dir='dist/Juicy Chat Creator Tools-linux-x64'
+          cp "$dir/JuicyChat Creator Tool" "$dir/WebP-Maker"; chmod +x "$dir/WebP-Maker"
+          export CREATOR_TOOLS_E2E_REPORT="$RUNNER_TEMP/creator-tools-linux-handover.json"
+          unset JBS_WEBP_MAGICK || true
+          Xvfb :97 -screen 0 1600x900x24 >/dev/null 2>&1 &
+          xpid=$!; export DISPLAY=:97; sleep 2
+          timeout 60s "$dir/WebP-Maker" --no-sandbox --disable-gpu --creator-tools-e2e
+          for i in $(seq 1 210); do
+            if [ -s "$CREATOR_TOOLS_E2E_REPORT" ] && ! pgrep -f "Juicy Chat Creator Tools-linux-x64/JuicyChat Creator Tool" >/dev/null; then break; fi
+            sleep 2
+          done
+          pkill -f "Juicy Chat Creator Tools-linux-x64/JuicyChat Creator Tool" || true; kill $xpid || true
+          test -s "$CREATOR_TOOLS_E2E_REPORT" || { echo 'Hand-over test: JuicyChat Creator Tool never finished the conversion.'; exit 1; }
+          node -e 'const r=require(process.env.CREATOR_TOOLS_E2E_REPORT); if(!r.ok){console.error(r);process.exit(1)} console.log("PASS: WebP-Maker hands over to JuicyChat Creator Tool, which converted successfully.")'
+          test -f "$dir/WebP-Maker"
       - name: Create Linux portable ZIP
         run: |
-          cd 'dist/Juicy Chat Creator Tools-linux-x64'
-          zip -qr ../../WebP-Maker-Linux-x64.zip .
-          test -s ../../WebP-Maker-Linux-x64.zip
+          # Older Linux updaters expect the files inside a WebP-Maker-linux-x64 folder.
+          cd dist
+          mv 'Juicy Chat Creator Tools-linux-x64' WebP-Maker-linux-x64
+          zip -qr ../WebP-Maker-Linux-x64.zip WebP-Maker-linux-x64
+          cd ..
+          test -s WebP-Maker-Linux-x64.zip
+          unzip -l WebP-Maker-Linux-x64.zip | grep -q 'WebP-Maker-linux-x64/JuicyChat Creator Tool$'
+          unzip -l WebP-Maker-Linux-x64.zip | grep -q 'WebP-Maker-linux-x64/WebP-Maker$'
       - uses: actions/upload-artifact@v4
         with:
           name: Juicy-Chat-Creator-Tools-Linux-x64
