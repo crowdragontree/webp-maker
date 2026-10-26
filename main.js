@@ -5,8 +5,16 @@ const {spawn}=require('node:child_process');
 const {app,BrowserWindow,ipcMain,dialog,clipboard,Notification,shell,nativeImage}=require('electron');
 const {WebpMaker}=require('./lib/webpMaker');
 const {create:createIntroService}=require('./introduction-designer/inline-host');
-const {PortableUpdater}=require('./lib/portableUpdater');
-const E2E=process.argv.includes('--creator-tools-e2e');
+const {PortableUpdater,finishUpdate,ASSETS}=require('./lib/portableUpdater');
+// Started by the updater from the downloaded copy: install it, then exit.
+const FINISH_UPDATE=process.argv.find(a=>a.startsWith('--jcct-finish-update='));
+if(FINISH_UPDATE){
+  finishUpdate(FINISH_UPDATE.slice('--jcct-finish-update='.length)).catch(()=>{}).finally(()=>process.exit(0));
+  return;
+}
+// Build-time test of the full update path (see the GitHub workflow).
+const UPDATE_E2E=process.argv.includes('--creator-tools-update-e2e');
+const E2E=process.argv.includes('--creator-tools-e2e')||UPDATE_E2E;
 // The program used to be WebP-Maker(.exe). Copies from v1.0.2-v1.1.0 only accept
 // an update that contains that file name, and restart it afterwards. Releases
 // therefore also ship a WebP-Maker copy, which immediately hands over to
@@ -45,11 +53,11 @@ async function finishRename(){
   for(let i=0;i<60&&fs.existsSync(legacy);i++){
     try{fs.rmSync(legacy,{force:true});}catch{await new Promise(r=>setTimeout(r,500));}
   }
-  // Remove previous-version backups left next to the app by both updaters.
+  // Remove previous-version backups and unused update copies left next to the app.
   const parent=path.dirname(INSTALL_DIR);
   let siblings=[];try{siblings=fs.readdirSync(parent,{withFileTypes:true});}catch{}
   for(const entry of siblings){
-    if(!entry.isDirectory()||!/^\.(webp-maker|jcct)-backup-/.test(entry.name))continue;
+    if(!entry.isDirectory()||!/^\.(webp-maker|jcct)-(backup|stage)-/.test(entry.name))continue;
     const backup=path.join(parent,entry.name);
     if(fs.existsSync(path.join(backup,'resources','app','package.json')))
       await fs.promises.rm(backup,{recursive:true,force:true,maxRetries:5,retryDelay:1000}).catch(()=>{});
@@ -109,8 +117,15 @@ app.whenReady().then(async()=>{
     }catch{return false;}
   });
   ipcMain.handle('creator-tools:intro',(event,action,args)=>{verifySender(event);return intro.handle(action,args);});
+  let testRelease;
+  if(UPDATE_E2E){
+    const zip=process.env.CREATOR_TOOLS_UPDATE_ZIP,next=process.env.CREATOR_TOOLS_UPDATE_VERSION,name=ASSETS[process.platform];
+    const bytes=fs.readFileSync(zip),digest='sha256:'+require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+    testRelease={fetchRelease:async()=>({tag_name:next,assets:[{name,digest,size:bytes.length,browser_download_url:`https://github.com/crowdragontree/webp-maker/releases/download/${next}/${name}`}]}),
+      downloader:async(asset,file)=>fs.promises.copyFile(zip,file)};
+  }
   updater=new PortableUpdater({version:app.getVersion(),platform:process.platform,appRoot:__dirname,packaged:app.isPackaged,
-    installDir:path.dirname(app.getPath('exe')),userData:app.getPath('userData'),busy:conversionActive,onStatus:status=>send('updates:status',status)});
+    installDir:path.dirname(app.getPath('exe')),userData:app.getPath('userData'),busy:conversionActive,onStatus:status=>send('updates:status',status),...testRelease});
   ipcMain.handle('updates:state',event=>{verifySender(event);return updater.state;});
   ipcMain.handle('updates:check',event=>{verifySender(event);return updater.check();});
   ipcMain.handle('updates:install',async event=>{
@@ -127,7 +142,13 @@ app.whenReady().then(async()=>{
   launch();
   if(!E2E)setTimeout(()=>finishRename().catch(()=>{}),3000).unref();
   if(!E2E){setTimeout(()=>updater.check({silent:true}),4500).unref();setInterval(()=>updater.check({silent:true}),6*60*60*1000).unref();}
-  if(E2E)require('./scripts/e2e-desktop').run({app,win,maker,dialog,root:__dirname}).catch(e=>{console.error('E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
+  if(UPDATE_E2E)(async()=>{
+    // Same steps as clicking Check for updates, then Update & Restart.
+    await updater.check();if(!updater.available)throw Error('Update test: no update offered. '+updater.state.message);
+    const stage=await updater.prepare();await updater.launchInstaller(stage);
+    quitting=true;app.quit();
+  })().catch(e=>{console.error('UPDATE E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
+  else if(E2E)require('./scripts/e2e-desktop').run({app,win,maker,dialog,root:__dirname}).catch(e=>{console.error('E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
 }).catch(e=>{console.error(e);app.quit();});
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 app.on('before-quit',()=>{quitting=true;});
