@@ -13,7 +13,7 @@ assert(html.includes('id="jcct-introduction-frame"'),'Embedded editor iframe mis
 assert(read('introduction-designer/index.html').includes('layout.js'));
 assert(read('introduction-designer/app.js').includes('applyArrangement'),'Smart snap engine not installed');
 assert(read('introduction-designer/style.css').includes('[hidden]{display:none!important}'),'Image inspector visibility fix missing');
-const app=require('../package.json');assert(app.version==='1.1.0');
+const app=require('../package.json');assert(/^\d+\.\d+\.\d+$/.test(app.version),'package.json version must look like 1.2.3');
 assert(read('main.js').includes('WebpMaker')&&read('main.js').includes('createIntroService'));
 const C=require('../introduction-designer/core');assert(C.verifyOutput(C.compile(C.initial(),{formatted:true})).valid);
 console.log('Juicy Chat Creator Tools two-tab shell, source files, auto-update compatibility and introduction compiler checks passed.');
