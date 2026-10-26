@@ -96,7 +96,7 @@ jobs:
             Start-Sleep -Seconds 2
           }
           Start-Sleep -Seconds 15
-          $leftovers=Get-ChildItem -LiteralPath $root -Force -Directory | Where-Object { $_.Name -match '^\.(jcct|webp-maker)-(stage|backup)-' }
+          $leftovers=Get-ChildItem -LiteralPath $root -Force -Directory | Where-Object { $_.Name -match '^\.(jcct|webp-maker)-(stage|backup|unpack)-' }
           $oldName=Test-Path (Join-Path $install 'WebP-Maker.exe')
           Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Stop-Process -Force
           $log=Join-Path $env:APPDATA 'Juicy Chat Creator Tools/updates/last-update.log'
@@ -192,7 +192,7 @@ jobs:
             sleep 2
           done
           sleep 15
-          leftovers=$(ls -A "$root" | grep -E '^\.(jcct|webp-maker)-(stage|backup)-' || true)
+          leftovers=$(ls -A "$root" | grep -E '^\.(jcct|webp-maker)-(stage|backup|unpack)-' || true)
           pkill -f "$app" || true; kill $xpid || true
           log="$HOME/.config/Juicy Chat Creator Tools/updates/last-update.log"; [ -f "$log" ] && cat "$log"
           [ "$ok" = 1 ] || { echo 'FAIL: the update was not installed and restarted.'; exit 1; }
