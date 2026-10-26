@@ -6,8 +6,9 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .jcct-mark{width:44px;height:44px;display:grid;place-items:center;border-radius:12px;color:white;font-weight:900;font-size:15px;letter-spacing:.03em;background:linear-gradient(135deg,#a44abb,#c34d86);box-shadow:0 4px 16px #5d286c6b}
 .jcct-brand{display:flex;flex-direction:column;gap:3px;white-space:nowrap}.jcct-brand strong{font-size:17px;line-height:1.2}.jcct-brand small{font-size:10px;color:#ba9fc8}
 .jcct-version{border:1px solid #543760;color:#dbb0ed;background:#21142a;padding:4px 7px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap}
-.jcct-tabs{display:flex;align-items:center;gap:8px;flex:1;justify-content:center;min-width:300px}
-.jcct-tabs .nav-btn{border:1px solid #49304f;background:#1a1322;color:#d9c3e3;text-align:center;font-size:13px;white-space:nowrap;padding:10px 16px}
+.jcct-tabs{display:flex;flex-direction:row;align-items:center;gap:8px;flex:1;justify-content:center;min-width:300px}
+.jcct-tabs .nav-btn{border:1px solid #49304f;background:#1a1322;color:#d9c3e3;text-align:center;font-size:13px;white-space:nowrap;padding:10px 16px;min-width:190px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.jcct-tabs .nav-btn span{width:auto}
 .jcct-tabs .nav-btn.active{background:linear-gradient(120deg,#5a2c74,#7e376c);color:#fff;border-color:#aa5fc1;box-shadow:0 0 0 1px #9666aa44}
 .jcct-tabs .nav-btn[data-webp-status="running"]:not(.active){border-color:#bd78d0;box-shadow:0 0 9px #853fa63d}
 .jcct-tabs .nav-btn[data-webp-status="complete"]:not(.active){border-color:#3a9a76;color:#95f0c1}
