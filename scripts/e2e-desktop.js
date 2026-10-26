@@ -53,6 +53,9 @@ async function run({app,win,maker,root}){
       status:document.querySelector('#wm-count').textContent
     }))()`),{label:'Load three real MP4-labeled VP9 videos',limit:45000});
     await win.webContents.executeJavaScript(`(()=>{
+      // A real user clicks OK on the size-change prompt; an unattended
+      // test must answer it, or the modal blocks the window forever.
+      window.confirm=()=>true;window.alert=()=>{};
       const el=document.querySelector('#wm-crop');el.value='3:4';el.dispatchEvent(new Event('change',{bubbles:true}));
       document.querySelector('#wm-convert').click();
     })()`);
