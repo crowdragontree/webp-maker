@@ -22,8 +22,14 @@ Copy-Item -Path (Join-Path $AppDir '*') -Destination $payloadDir -Recurse -Force
 Remove-Item -LiteralPath (Join-Path $payloadDir 'WebP-Maker.exe') -Force -ErrorAction SilentlyContinue
 if (!(Test-Path (Join-Path $payloadDir $exeName))) { throw "Payload staging failed: $exeName not at payload root." }
 $zip = Join-Path $work 'payload.zip'
-# Zip the folder itself (reliable nesting) rather than folder\* (which can misplace subfolders).
 Compress-Archive -Path $payloadDir -DestinationPath $zip -Force
+# Verify the zip really contains the program before embedding it, so a bad zip fails the build.
+$verify = Join-Path $work 'verify'
+Expand-Archive -LiteralPath $zip -DestinationPath $verify -Force
+$check = Get-ChildItem -LiteralPath $verify -Filter $exeName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $check) { throw "Payload zip is broken: $exeName not found after re-extracting $zip." }
+Write-Host ("Payload verified: {0}" -f $check.FullName.Substring($verify.Length))
+Remove-Item -LiteralPath $verify -Recurse -Force
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zip))
 
 # 2. The installer script. {{PAYLOAD}} is replaced with the base64 zip.
@@ -40,9 +46,13 @@ try {
   New-Item -ItemType Directory -Path $tmp | Out-Null
   $zip=Join-Path $tmp 'payload.zip'
   [IO.File]::WriteAllBytes($zip,[Convert]::FromBase64String($PAYLOAD))
-  Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
-  $src=Join-Path $tmp 'app'
-  if(!(Test-Path (Join-Path $src $exeName))){ throw "Payload did not unpack ($exeName not found in $src)." }
+  $unpack=Join-Path $tmp 'unpack'
+  New-Item -ItemType Directory -Path $unpack -Force | Out-Null
+  Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
+  # Find wherever the program landed, no matter how Compress-Archive nested it.
+  $exeItem=Get-ChildItem -LiteralPath $unpack -Filter $exeName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+  if(-not $exeItem){ throw "Payload did not unpack: $exeName not found under $unpack." }
+  $src=$exeItem.DirectoryName
 
   # Close any running copy so its folder can be swapped.
   foreach($n in 'WebP-Maker','JuicyChat Creator Tool'){
