@@ -121,7 +121,7 @@ jobs:
           $install = Join-Path $root 'WebP-Maker'
           Expand-Archive -LiteralPath $zip -DestinationPath $install
           if (!(Test-Path (Join-Path $install 'WebP-Maker.exe'))) { throw 'Old copy did not lay down WebP-Maker.exe' }
-          pwsh -NoProfile -ExecutionPolicy Bypass -File setup-out/JuicyChat-Creator-Tool-Setup.ps1 "--target=$install" --no-launch
+          pwsh -NoProfile -ExecutionPolicy Bypass -File setup-out/JuicyChat-Creator-Tool-Setup.ps1 -Target $install -NoLaunch
           Start-Sleep -Seconds 3
           Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Stop-Process -Force
           $pkg = Get-Content (Join-Path $install 'resources/app/package.json') -Raw
