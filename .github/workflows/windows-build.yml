@@ -122,9 +122,12 @@ jobs:
           Expand-Archive -LiteralPath $zip -DestinationPath $install
           if (!(Test-Path (Join-Path $install 'WebP-Maker.exe'))) { throw 'Old copy did not lay down WebP-Maker.exe' }
           if (!(Test-Path 'setup-out/JuicyChat-Creator-Tool-v1.1.1-payload.zip')) { throw 'Payload zip missing beside Setup' }
-          pwsh -NoProfile -ExecutionPolicy Bypass -File setup-out/JuicyChat-Creator-Tool-Setup.ps1 -Target $install -NoLaunch
-          Start-Sleep -Seconds 3
-          Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Stop-Process -Force
+          # Run Setup with a hard timeout so a hung child can never stall the job.
+          $p = Start-Process pwsh -PassThru -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','setup-out/JuicyChat-Creator-Tool-Setup.ps1','-Target',$install,'-NoLaunch'
+          if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; throw 'Setup did not finish within 2 minutes.' }
+          # Kill any app the installer may have started, so nothing keeps the step alive.
+          Get-Process -Name 'JuicyChat Creator Tool','WebP-Maker' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
           $pkg = Get-Content (Join-Path $install 'resources/app/package.json') -Raw
           if ($pkg -notmatch '"version": "1.1.1"') { throw 'Setup did not install v1.1.1.' }
           if (!(Test-Path (Join-Path $install 'JuicyChat Creator Tool.exe'))) { throw 'New program name missing after Setup.' }
