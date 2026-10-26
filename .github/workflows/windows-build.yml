@@ -70,6 +70,41 @@ jobs:
           if (-not $report.ok) { throw (Get-Content $env:CREATOR_TOOLS_E2E_REPORT -Raw) }
           if (!(Test-Path (Join-Path $dir 'WebP-Maker.exe'))) { throw 'WebP-Maker.exe must stay in the release for older updaters.' }
           Write-Host 'PASS: WebP-Maker.exe hands over to JuicyChat Creator Tool.exe, which converted successfully.'
+      - name: TEST automatic update installs and restarts on Windows (REQUIRED)
+        shell: pwsh
+        run: |
+          # Installs a test v9.9.9 the same way Check for updates + Update & Restart does.
+          $src=(Resolve-Path 'dist/Juicy Chat Creator Tools-win32-x64').Path
+          $root=Join-Path $env:RUNNER_TEMP 'update test'
+          Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $install=Join-Path $root 'Installed App'; $next=Join-Path $root 'next'
+          Copy-Item -LiteralPath $src -Destination $install -Recurse
+          Copy-Item -LiteralPath $src -Destination $next -Recurse
+          node -e 'const f=process.argv[1],p=require(f);p.version=process.argv[2];require(`fs`).writeFileSync(f,JSON.stringify(p,null,2))' (Join-Path $next 'resources/app/package.json') '9.9.9'
+          $zip=Join-Path $root 'WebP-Maker-Windows-x64.zip'
+          Compress-Archive -Path (Join-Path $next '*') -DestinationPath $zip -Force
+          Remove-Item -LiteralPath $next -Recurse -Force
+          $env:CREATOR_TOOLS_UPDATE_ZIP=$zip; $env:CREATOR_TOOLS_UPDATE_VERSION='9.9.9'
+          $old=Start-Process -FilePath (Join-Path $install 'JuicyChat Creator Tool.exe') -ArgumentList '--creator-tools-update-e2e' -PassThru
+          if (-not $old.WaitForExit(240000)) { Stop-Process -Id $old.Id -Force; throw 'The app did not close to install the update.' }
+          $ok=$false
+          for ($i=0; $i -lt 90; $i++) {
+            $pkg=Get-Content (Join-Path $install 'resources/app/package.json') -Raw -ErrorAction SilentlyContinue
+            $running=Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$install*" }
+            if ($pkg -match '"version": "9.9.9"' -and $running) { $ok=$true; break }
+            Start-Sleep -Seconds 2
+          }
+          Start-Sleep -Seconds 15
+          $leftovers=Get-ChildItem -LiteralPath $root -Force -Directory | Where-Object { $_.Name -match '^\.(jcct|webp-maker)-(stage|backup)-' }
+          $oldName=Test-Path (Join-Path $install 'WebP-Maker.exe')
+          Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Stop-Process -Force
+          $log=Join-Path $env:APPDATA 'Juicy Chat Creator Tools/updates/last-update.log'
+          if (Test-Path $log) { Get-Content $log }
+          if (-not $ok) { throw 'The update was not installed and restarted.' }
+          if ($leftovers) { throw "Update folders were left behind: $($leftovers.Name -join ', ')" }
+          if ($oldName) { throw 'Old WebP-Maker.exe name was not removed.' }
+          Write-Host 'PASS: Windows app downloaded, installed and restarted into the update, then cleaned up.'
       - name: Create Windows portable ZIP
         shell: pwsh
         run: |
@@ -139,6 +174,31 @@ jobs:
           test -s "$CREATOR_TOOLS_E2E_REPORT" || { echo 'Hand-over test: JuicyChat Creator Tool never finished the conversion.'; exit 1; }
           node -e 'const r=require(process.env.CREATOR_TOOLS_E2E_REPORT); if(!r.ok){console.error(r);process.exit(1)} console.log("PASS: WebP-Maker hands over to JuicyChat Creator Tool, which converted successfully.")'
           test -f "$dir/WebP-Maker"
+      - name: TEST automatic update installs and restarts on Linux (REQUIRED)
+        run: |
+          # Installs a test v9.9.9 the same way Check for updates + Update & Restart does.
+          src="$PWD/dist/Juicy Chat Creator Tools-linux-x64"
+          root="$RUNNER_TEMP/update test"; rm -rf "$root"; mkdir -p "$root"
+          cp -a "$src" "$root/Installed App"; cp -a "$src" "$root/next"
+          node -e 'const f=process.argv[1],p=require(f);p.version="9.9.9";require("fs").writeFileSync(f,JSON.stringify(p,null,2))' "$root/next/resources/app/package.json"
+          (cd "$root/next" && zip -qr "$root/WebP-Maker-Linux-x64.zip" .); rm -rf "$root/next"
+          export CREATOR_TOOLS_UPDATE_ZIP="$root/WebP-Maker-Linux-x64.zip" CREATOR_TOOLS_UPDATE_VERSION=9.9.9
+          Xvfb :96 -screen 0 1600x900x24 >/dev/null 2>&1 &
+          xpid=$!; export DISPLAY=:96; sleep 2
+          timeout 240s "$root/Installed App/JuicyChat Creator Tool" --no-sandbox --disable-gpu --creator-tools-update-e2e
+          app="$root/Installed App/JuicyChat Creator Tool"; ok=0
+          for i in $(seq 1 90); do
+            if grep -q '"version": "9.9.9"' "$root/Installed App/resources/app/package.json" 2>/dev/null && pgrep -f "$app" >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          sleep 15
+          leftovers=$(ls -A "$root" | grep -E '^\.(jcct|webp-maker)-(stage|backup)-' || true)
+          pkill -f "$app" || true; kill $xpid || true
+          log="$HOME/.config/Juicy Chat Creator Tools/updates/last-update.log"; [ -f "$log" ] && cat "$log"
+          [ "$ok" = 1 ] || { echo 'FAIL: the update was not installed and restarted.'; exit 1; }
+          [ -z "$leftovers" ] || { echo "FAIL: update folders were left behind: $leftovers"; exit 1; }
+          [ ! -e "$root/Installed App/WebP-Maker" ] || { echo 'FAIL: old WebP-Maker name was not removed.'; exit 1; }
+          echo 'PASS: Linux app downloaded, installed and restarted into the update, then cleaned up.'
       - name: Create Linux portable ZIP
         run: |
           # Older Linux updaters expect the files inside a WebP-Maker-linux-x64 folder.
