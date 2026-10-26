@@ -35,7 +35,8 @@ param([string]`$Target,[switch]`$NoLaunch)
 `$payloadName='$payloadName'
 function Info(`$m){ Write-Host `$m }
 try {
-  Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+  `$interactive = (-not `$NoLaunch) -and (-not `$Target)
+  if (`$interactive) { Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue }
 
   # The payload zip lives next to this script (or next to the .exe when compiled).
   `$here = if (`$PSScriptRoot) { `$PSScriptRoot } elseif (`$PSCommandPath) { Split-Path `$PSCommandPath -Parent } else { Split-Path ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) -Parent }
@@ -72,7 +73,7 @@ try {
     }
     `$target = `$c | Select-Object -ExpandProperty DirectoryName -Unique | Select-Object -First 1
   }
-  if ((-not `$target) -and ([System.Windows.Forms.Application]::MessageLoop -ne `$null)) {
+  if ((-not `$target) -and `$interactive) {
     `$fb = New-Object System.Windows.Forms.FolderBrowserDialog
     `$fb.Description = 'Select your existing WebP-Maker / Juicy Chat Creator Tool folder'
     if (`$fb.ShowDialog() -eq 'OK') { `$target = `$fb.SelectedPath }
@@ -108,15 +109,19 @@ try {
     }
   }
 
-  if (-not (`$NoLaunch)) { Start-Process -FilePath `$newExe -WorkingDirectory `$target }
-  Start-Sleep 3
+  if (`$NoLaunch) {
+    Info 'Done. Juicy Chat Creator Tool v1.1.1 is installed (not launched: -NoLaunch).'
+  } else {
+    Start-Process -FilePath `$newExe -WorkingDirectory `$target
+    Info 'Done. Juicy Chat Creator Tool v1.1.1 is installed and running.'
+  }
+  if (-not `$NoLaunch) { Start-Sleep 3 }
   Remove-Item -LiteralPath `$backup -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath `$tmp -Recurse -Force -ErrorAction SilentlyContinue
-  Info 'Done. Juicy Chat Creator Tool v1.1.1 is installed and running.'
-  if ([System.Windows.Forms.Application]::MessageLoop -ne `$null) { [void][System.Windows.Forms.MessageBox]::Show('Juicy Chat Creator Tool has been updated to v1.1.1.','Setup complete') }
+  if (`$interactive) { [void][System.Windows.Forms.MessageBox]::Show('Juicy Chat Creator Tool has been updated to v1.1.1.','Setup complete') }
 } catch {
   Write-Host "SETUP FAILED: `$_"
-  try { [void][System.Windows.Forms.MessageBox]::Show("Setup could not finish:`n`$_",'Setup failed') } catch {}
+  if (`$interactive) { try { [void][System.Windows.Forms.MessageBox]::Show("Setup could not finish:`n`$_",'Setup failed') } catch {} }
   exit 1
 }
 "@
