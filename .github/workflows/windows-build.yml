@@ -175,7 +175,6 @@ jobs:
           test -s "$CREATOR_TOOLS_E2E_REPORT" || { echo 'Hand-over test: JuicyChat Creator Tool never finished the conversion.'; exit 1; }
           node -e 'const r=require(process.env.CREATOR_TOOLS_E2E_REPORT); if(!r.ok){console.error(r);process.exit(1)} console.log("PASS: WebP-Maker hands over to JuicyChat Creator Tool, which converted successfully.")'
           rm -f "$dir/WebP-Maker"
-          test -f "$dir/WebP-Maker"
       - name: TEST automatic update installs and restarts on Linux (REQUIRED)
         run: |
           # Installs a test v9.9.9 the same way Check for updates + Update & Restart does.
