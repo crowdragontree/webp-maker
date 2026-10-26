@@ -84,6 +84,8 @@
       {id:'b5',type:'quote',text:'{{extra}}',size:15,align:'center',color:'text',line:1.5,margin:10,placement:{x:5,y:472,w:90,h:85}}
     ]
   };}
+  // What a brand-new design starts as: the same content, STACKED (items follow each other, nothing to line up or overlap). "Free placement" stays available and computes positions when chosen.
+  function starter(){const d=initial();d.layout={mode:'flow',height:240,autoHeight:true,autoFitVersion:2,autoMakeRoom:true};for(const b of d.blocks)delete b.placement;return d;}
   function slotValues(doc){const f=doc?.fields||{};return Object.fromEntries(SLOTS.map(k=>[k,String(f[k]??'')]));}
   // Tokens get replaced after HTML escaping: slot content can never be interpreted as markup.
   function interpolate(text,fields){let s=escapeHtml(text);for(const k of SLOTS){const token=new RegExp('\\{\\{\\s*'+k+'\\s*\\}\\}','gi');s=s.replace(token,()=>escapeHtml(fields[k]||'').replace(/\r?\n/g,'<br>'));}return s;}
@@ -136,24 +138,40 @@
     if(t==='quote')return `<blockquote${marker}${style}>${val()}</blockquote>`;
     if(t==='link')return `<div${marker}${style}><a href="${escapeHtml(safeHttps(block.url)||'https://juicychat.ai')}" style="color:inherit;text-decoration:underline">${val()}</a></div>`;
     if(t==='image'){
-      const url=safeHttps(block.url);if(!url)return preview?`<div${marker}${style}>Image: add a direct HTTPS image URL in the inspector</div>`:`<div${style}>Image unavailable</div>`;
-      if(block.crop?.enabled){
-        const croppedStyle={...blockStyle(block,theme),'height':'100%','width':'100%','padding':'0','margin':'0','overflow':'hidden','position':'relative'};
-        return `<div${marker}${attrStyle(croppedStyle)}>${cropImage(url,block.alt||'Character image',block.crop,editorPreview)}</div>`;
-      }
-      const w=clamp(block.imageWidth,20,100,100),fit=['contain','cover'].includes(block.fit)?block.fit:'contain';
+      const url=safeHttps(block.url);
+      if(!url)return preview?`<div${marker}${style}>Image: add a direct HTTPS image URL in the inspector</div>`:`<div${style}>Image unavailable</div>`;
       const freeImage=!!block.placement;
+      const framed=!!block.frameOn;
+      const pad=clamp(block.framePadding,0,60,0);
+      const borderWidth=framed?clamp(block.frameBorderWidth,0,16,2):0;
+      const frameRadius=clamp(block.frameRadius,0,90,block.radius??12);
+      const imageRadius=clamp(block.imageRadius,0,90,block.radius??12);
+      const frameStyle={'display':'block','box-sizing':'border-box','width':'100%',
+        'height':freeImage?'100%':'auto','padding':`${pad}px`,
+        'border':borderWidth?`${borderWidth}px ${borderStyle(block.frameBorderStyle)} ${cleanColor(block.frameBorderColor,theme.border)}`:'none',
+        'border-radius':`${frameRadius}px`,
+        'background':block.frameBackgroundOn?cleanColor(block.frameBackgroundColor,theme.surface):'transparent',
+        'overflow':'hidden'};
+      const glow=clamp(block.frameShadow,0,60,0);
+      if(glow)frameStyle['box-shadow']=`0 0 ${glow}px ${shadowColor(block.frameBorderColor||theme.accent,.55)}`;
+      const viewportStyle={'display':'block','box-sizing':'border-box','width':'100%',
+        'height':freeImage?'100%':'auto','min-height':block.crop?.enabled?'24px':'0',
+        'overflow':'hidden','border-radius':`${imageRadius}px`};
+      const w=clamp(block.imageWidth,20,100,100),fit=['contain','cover'].includes(block.fit)?block.fit:'contain';
       const imageStyle=block.importedImageStyle?
         {...parsedStyle(block.importedImageStyle),...(block.imageStyleOverrides||{})}:
         {'display':'block','width':`${w}%`,'height':freeImage?'100%':'auto',
          'max-height':freeImage?'100%':'none','max-width':'100%','margin':'0 auto',
-         'object-fit':fit,'aspect-ratio':block.ratio&&/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(block.ratio)?block.ratio:'auto',
-         'border-radius':`${clamp(block.radius,0,90,12)}px`};
-      const img=attrStyle(imageStyle);
+         'object-fit':fit,'aspect-ratio':block.ratio&&/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(block.ratio)?block.ratio:'auto'};
+      const body=block.crop?.enabled
+        ?cropImage(url,block.alt||'Character image',block.crop,editorPreview)
+        :`<img src="${escapeHtml(url)}" alt="${escapeHtml(block.alt||'Character image')}" loading="eager" decoding="async" referrerpolicy="no-referrer"${attrStyle(imageStyle)}>`;
       const boxStyle=freeImage?attrStyle({...blockStyle(block,theme),'width':'100%',
-        'height':'100%','overflow':'hidden',
-        ...(block.importedStyle?{}:{margin:'0',padding:'0'})}):style;
-      return `<div${marker}${boxStyle}><img src="${escapeHtml(url)}" alt="${escapeHtml(block.alt||'Character image')}" loading="eager" decoding="async" referrerpolicy="no-referrer"${img}></div>`;
+        'height':'100%','overflow':'visible',...(block.importedStyle?{}:{margin:'0',padding:'0'})}):style;
+      // Padding belongs to the frame rather than the image/crop, so the outer
+      // selection's position and dimensions never move when spacing changes.
+      return `<div${marker}${boxStyle}><div${editorPreview?' data-intro-image-frame="true"':''}${attrStyle(frameStyle)}>`+
+        `<div${attrStyle(viewportStyle)}>${body}</div></div></div>`;
     }
     if(t==='divider'){
       const shade=cleanColor(block.dividerColor,theme.border),width=clamp(block.dividerThickness,1,16,1),gap=clamp(block.dividerGap,0,40,10);
@@ -286,5 +304,5 @@
   // Data-only placeholders are preserved in saved templates. Importing/exporting JSON
   // copies the design, not a screenshot or a rendered string.
   function forTemplate(doc){const copy=JSON.parse(JSON.stringify(doc||initial()));copy.fields={scene:'',name:'',intro:'',extra:''};return copy;}
-  return {MAX,TYPES,SLOTS,TAGS,STYLES,initial,compile,placementOf,formatHtml,verifyOutput,forTemplate,newFrame,frameStyle,imageCrop,canvasHeight,interpolate,safeHttps,safeCss,parsedStyle,escapeHtml,cleanColor,clamp};
+  return {MAX,TYPES,SLOTS,TAGS,STYLES,initial,starter,compile,placementOf,formatHtml,verifyOutput,forTemplate,newFrame,frameStyle,imageCrop,canvasHeight,interpolate,safeHttps,safeCss,parsedStyle,escapeHtml,cleanColor,clamp};
 });

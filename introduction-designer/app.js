@@ -56,6 +56,7 @@
     pre.innerHTML=highlightHtml(input.value)+'\n';
     pre.scrollTop=input.scrollTop;pre.scrollLeft=input.scrollLeft;
     const live=$('id-import-live-preview');if(live)live.innerHTML=sanitizeHtml(input.value);
+    const warn=$('id-import-warn');if(warn){const msg=removedSummary();warn.textContent=msg;warn.hidden=!msg;}
   }
 
   const editable=['heading','text','label','quote','divider','list','link','custom'];
@@ -73,7 +74,7 @@
     if(type==='heading'){base.size=28;base.weight=700;base.color='accent';}
     if(type==='label'){base.weight=700;base.background=true;base.color='accent';}
     if(type==='quote'){base.size=17;base.background=true;base.borderOn=true;}
-    if(type==='image'){base.url='';base.alt='Character image';base.imageWidth=100;base.fit='contain';base.ratio='original';base.manualHeight=true;}
+    if(type==='image'){base.url='';base.alt='Character image';base.imageWidth=100;base.fit='contain';base.ratio='original';base.manualHeight=true;Object.assign(base,{frameOn:true,framePadding:8,frameBorderWidth:2,frameBorderStyle:'solid',frameBorderColor:'#b36de3',frameRadius:18,imageRadius:12,frameBackgroundOn:false,frameBackgroundColor:'#251b32',frameShadow:12});}
     if(type==='text')base.manualHeight=false; // Paragraphs automatically fit their content.
     if(type==='columns'){base.left='{{name}}';base.right='{{extra}}';base.align='left';}
     if(type==='spacer')base.height=25;
@@ -566,7 +567,15 @@
       $('id-ratio-custom').hidden=$('id-block-ratio').value!=='custom';
       $('id-ratio-custom').value=$('id-block-ratio').value==='custom'?v:'';
       showImageDimensions(b);
+      for(const [key,id,fallback] of [
+        ['frameOn','id-frame-on',false],['framePadding','id-frame-padding',0],
+        ['frameBorderColor','id-frame-border-color',doc.theme.border],['frameBorderWidth','id-frame-border-width',2],
+        ['frameBorderStyle','id-frame-border-style','solid'],['frameRadius','id-frame-radius',b.radius??12],
+        ['imageRadius','id-image-radius',b.radius??12],['frameBackgroundOn','id-frame-background-on',false],
+        ['frameBackgroundColor','id-frame-background-color',doc.theme.surface],['frameShadow','id-frame-shadow',0]
+      ])styleInput(id,b[key]??fallback);
     }
+    active('id-image-frame-controls',b.type==='image');
     const textTypes=['heading','text','label','quote','columns','list','link','custom'];
     const hasTypography=textTypes.includes(b.type);
     for(const id of ['id-block-font','id-block-size','id-block-align','id-block-weight','id-block-color','id-block-line','id-block-spacing']){
@@ -692,7 +701,7 @@
     const grouped={
       advanced:['id-position-editor','id-text-height-wrap','id-layer-metadata','id-block-css-section'],
       content:['id-text-wrap','id-left-wrap','id-right-wrap','id-url-wrap','id-alt-wrap','id-ratio-wrap','id-imagewidth-wrap','id-crop-controls','id-divider-controls','id-spacer-wrap','id-ordered-wrap'],
-      style:['id-block-font','id-block-size','id-block-align','id-block-weight','id-block-color','id-block-line','id-block-padding','id-block-margin','id-block-spacing','id-block-background','id-block-bgcolor','id-block-borderon','id-block-bordercolor','id-block-borderwidth','id-block-borderstyle','id-block-radius','id-block-glow','id-block-glowcolor','id-block-glowopacity','id-block-glow2','id-block-glowcolor2','id-block-glowopacity2','id-block-shadow']
+      style:['id-image-frame-controls','id-block-font','id-block-size','id-block-align','id-block-weight','id-block-color','id-block-line','id-block-padding','id-block-margin','id-block-spacing','id-block-background','id-block-bgcolor','id-block-borderon','id-block-bordercolor','id-block-borderwidth','id-block-borderstyle','id-block-radius','id-block-glow','id-block-glowcolor','id-block-glowopacity','id-block-glow2','id-block-glowcolor2','id-block-glowopacity2','id-block-shadow']
     };
     for(const [group,ids] of Object.entries(grouped))for(const id of ids){
       const node=$(id);if(!node)continue;
@@ -703,13 +712,30 @@
     $('id-layer-custom-name').oninput=e=>changeSelected(b=>{b.customName=e.target.value;});
     $('id-layer-visible').onchange=e=>changeSelected(b=>{b.hiddenInDesigner=!e.target.checked;});
     $('id-layer-locked').onchange=e=>changeSelected(b=>{b.locked=e.target.checked;});
-    $('id-block-inline-css').oninput=e=>changeSelected(b=>{b.importedStyle=sanitizeInlineStyles(e.target.value);b.styleOverrides={};});
+    $('id-block-inline-css').oninput=e=>{
+      const gone=[];for(const part of String(e.target.value||'').split(';')){const i=part.indexOf(':');if(i<1)continue;const name=part.slice(0,i).trim().toLowerCase();if(name&&!C.safeCss(name,part.slice(i+1).trim()))gone.push(name);}
+      const warn=$('id-css-warn');if(warn){warn.textContent=gone.length?'Not allowed by JuicyChat, so it is left out: '+[...new Set(gone)].join(', ')+'.':'';warn.hidden=!gone.length;}
+      changeSelected(b=>{b.importedStyle=sanitizeInlineStyles(e.target.value);b.styleOverrides={};});
+    };
     $('id-text-height-mode').onchange=e=>{
       const b=blockOf(selectedId);if(!b||b.type!=='text')return;
       b.manualHeight=e.target.value==='fixed';
       renderOutput();showInspector();queueSave();
     };
     setPropertyTab(propertyTab);
+    for(const [key,id] of [
+      ['frameOn','id-frame-on'],['framePadding','id-frame-padding'],
+      ['frameBorderColor','id-frame-border-color'],['frameBorderWidth','id-frame-border-width'],
+      ['frameBorderStyle','id-frame-border-style'],['frameRadius','id-frame-radius'],
+      ['imageRadius','id-image-radius'],['frameBackgroundOn','id-frame-background-on'],
+      ['frameBackgroundColor','id-frame-background-color'],['frameShadow','id-frame-shadow']
+    ]){
+      $(id).addEventListener('input',event=>{
+        const input=event.currentTarget;
+        const value=input.type==='checkbox'?input.checked:['range','number'].includes(input.type)?Number(input.value):input.value;
+        changeSelected(b=>{if(b.type==='image')b[key]=value;});
+      });
+    }
     for(const [key,id] of [['text','id-block-text'],['left','id-block-left'],['right','id-block-right'],['url','id-block-url'],['alt','id-block-alt'],['imageWidth','id-block-imagewidth'],['height','id-block-height'],['font','id-block-font'],['size','id-block-size'],['align','id-block-align'],['weight','id-block-weight'],['line','id-block-line'],['padding','id-block-padding'],['margin','id-block-margin'],['spacing','id-block-spacing'],['background','id-block-background'],['bgColor','id-block-bgcolor'],['borderOn','id-block-borderon'],['borderColor','id-block-bordercolor'],['borderWidth','id-block-borderwidth'],['borderStyle','id-block-borderstyle'],['radius','id-block-radius'],['glow','id-block-glow'],['glowColor','id-block-glowcolor'],['glowOpacity','id-block-glowopacity'],['glow2','id-block-glow2'],['glowColor2','id-block-glowcolor2'],['glowOpacity2','id-block-glowopacity2'],['shadow','id-block-shadow'],['ordered','id-block-ordered']]){
       const el=$(id);el.addEventListener('input',()=>{
         const value=el.type==='checkbox'?el.checked:['range','number'].includes(el.type)?Number(el.value):el.value;
@@ -812,7 +838,18 @@
   }
   // Parse imported HTML into a safe, static subset of JuicyChat's guide. No
   // scripts, event handlers, frames, base tags, linked CSS, or unsafe URLs.
+  // What the last sanitizeHtml() call had to remove, so people are told instead of silently losing styling.
+  let removedCode={styles:new Set(),tags:new Set()};
+  function removedSummary(){
+    const styles=[...removedCode.styles],tags=[...removedCode.tags];
+    if(!styles.length&&!tags.length)return '';
+    const parts=[];
+    if(styles.length)parts.push('styles JuicyChat does not allow ('+styles.slice(0,8).join(', ')+(styles.length>8?', …':'')+')');
+    if(tags.length)parts.push('unsupported HTML ('+tags.slice(0,8).map(t=>'<'+t+'>').join(', ')+(tags.length>8?', …':'')+')');
+    return 'Removed '+parts.join(' and ')+'. JuicyChat only keeps simple inline-styled HTML.';
+  }
   function sanitizeHtml(source){
+    removedCode={styles:new Set(),tags:new Set()};
     if(typeof DOMParser==='undefined')return '';
     const parsed=new DOMParser().parseFromString('<div id="id-import-root">'+String(source||'')+'</div>','text/html');
     const body=parsed.querySelector('#id-import-root');if(!body)return '';
@@ -820,9 +857,9 @@
     function clean(node){
       if(node.nodeType===Node.TEXT_NODE)return escape(node.nodeValue||'');
       if(node.nodeType!==Node.ELEMENT_NODE)return '';
-      const tag=node.tagName.toLowerCase();if(dropped.includes(tag))return '';
+      const tag=node.tagName.toLowerCase();if(dropped.includes(tag)){removedCode.tags.add(tag);return '';}
       const content=[...node.childNodes].map(clean).join('');
-      if(!C.TAGS.has(tag))return content;
+      if(!C.TAGS.has(tag)){removedCode.tags.add(tag);return content;}
       const attrs=[];
       if(tag==='img'){
         const url=C.safeHttps(node.getAttribute('src'));if(!url)return '';
@@ -838,7 +875,7 @@
       for(const part of String(node.getAttribute('style')||'').split(';')){
         const i=part.indexOf(':');if(i<1)continue;
         const property=part.slice(0,i).trim().toLowerCase(),val=C.safeCss(property,part.slice(i+1).trim());
-        if(val)styles.push(`${property}: ${val}`);
+        if(val)styles.push(`${property}: ${val}`);else removedCode.styles.add(property);
       }
       if(styles.length)attrs.push(`style="${escape(styles.join(';'))}"`);
       const attr=attrs.length?' '+attrs.join(' '):'';
@@ -1027,8 +1064,11 @@
       rendered=C.formatHtml(compile());const count=C.verifyOutput(rendered);const warn=count.issues;
       $('id-counter').textContent=`${count.length.toLocaleString()} / 15,000 characters`;
       $('id-counter').classList.toggle('error',!count.valid);
-      $('id-budget').textContent=warn.length?warn.join(' '):`${count.remaining.toLocaleString()} characters left, including all HTML styling and text.`;
-      $('id-budget').classList.toggle('error',!count.valid);
+      const nearLimit=count.valid&&count.length>=12000;
+      $('id-budget').textContent=warn.length?warn.join(' '):nearLimit?`Getting close: ${count.remaining.toLocaleString()} left. The styling code counts too, not just your words, so shorten the text or remove a decoration if you run out.`:`${count.remaining.toLocaleString()} characters left. The styling code counts too, not just your words.`;
+      $('id-budget').classList.toggle('error',!count.valid);$('id-budget').classList.toggle('warn',nearLimit);
+      $('id-counter').classList.toggle('warn',nearLimit);
+      const bar=$('id-meter-bar');if(bar){bar.style.width=Math.min(100,count.length/150)+'%';bar.dataset.level=!count.valid?'over':nearLimit?'warn':'ok';}
       $('id-copy').disabled=!count.valid;$('id-return').disabled=!count.valid;
       $('id-output-html').value=rendered;$('id-output-highlight').innerHTML=highlightHtml(rendered);
       syncLayoutUI();
@@ -1303,7 +1343,7 @@
     $('id-visual-tab').onclick=()=>chooseView('visual');$('id-html-tab').onclick=()=>chooseView('html');
     $('id-back-visual').onclick=()=>chooseView('visual');
     $('id-apply-html').onclick=()=>{
-      const raw=$('id-custom-html').value;const clean=sanitizeHtml(raw);
+      const raw=$('id-custom-html').value;const clean=sanitizeHtml(raw);const removedNote=removedSummary();
       if(!clean.trim())return notice('Paste guide-compatible HTML before importing.',true);
       const before=C.verifyOutput(sourceWithSlots(clean));if(!before.valid)return notice(before.issues.join(' '),true);
       const translation=visualDocumentFromHtml(clean);
@@ -1323,12 +1363,12 @@
         }))).then(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
           if(doc===importedDoc&&doc.mode==='visual'){
             switchLayout('freeform');
-            notice(`Imported ${translation.blocks.length} movable layers and ${translation.theme.frames.length} nested border frames. Original inline styles preserved.`);
+            notice(`Imported ${translation.blocks.length} movable layers and ${translation.theme.frames.length} nested border frames. Original inline styles preserved.`+(removedNote?' '+removedNote:''));
           }
         })));
       }else{
         doc.mode='source';doc.sourceHtml=clean;selectedId=null;renderLayers();showInspector();renderOutput();queueSave();chooseView('visual');
-        notice('HTML imported in source mode. Unsupported HTML was removed.');
+        notice('HTML imported in source mode. '+(removedNote||'Nothing needed removing.'));
       }
     };
     $('id-return-generated').onclick=()=>{
@@ -1339,7 +1379,7 @@
     $('id-toggle-code').onclick=()=>{const el=$('id-output-highlight-wrap');el.hidden=!el.hidden;$('id-toggle-code').textContent=el.hidden?'Show code':'Hide code';};
     $('id-theme-tab').onclick=()=>{$('id-theme-tab').classList.add('active');$('id-element-tab').classList.remove('active');showBlockPanel();};
     $('id-element-tab').onclick=()=>{$('id-element-tab').classList.add('active');$('id-theme-tab').classList.remove('active');showBlockPanel();};
-    $('id-new').onclick=()=>{if(!confirm('Start a fresh Introduction design? Your saved templates will stay available.'))return;templateId=null;fromSaved(C.initial());notice('Started a fresh design.');};
+    $('id-new').onclick=()=>{if(!confirm('Start a fresh Introduction design? Your saved templates will stay available.'))return;templateId=null;fromSaved(C.starter());notice('Started a fresh design.');};
     $('id-save-template').onclick=async()=>{
       const name=prompt('Name your reusable Introduction template:',doc.title||'My Introduction Design');if(!name)return;
       try{const record=await host.saveTemplate(name,doc);templateId=record.id;doc.title=record.name;await refreshTemplates();$('id-template-select').value=record.id;notice('Template saved. You can reuse this design with new text.');}
@@ -1364,11 +1404,11 @@
   async function refreshTemplates(){templates=await host.templates();const sel=$('id-template-select'),was=sel.value;sel.replaceChildren(new Option('Saved templates',''));for(const t of templates)sel.add(new Option(t.name,t.id));if(templates.some(t=>t.id===was))sel.value=was;}
   function seedData(seed,draft){
     if(seed?.design){fromSaved(seed.design);return;}
-    if(seed?.fields){const next=C.initial();next.fields={...next.fields,...seed.fields};
+    if(seed?.fields){const next=C.starter();next.fields={...next.fields,...seed.fields};
       if(seed.sourceHtml){next.mode='source';next.sourceHtml=sanitizeHtml(seed.sourceHtml);}
       fromSaved(next);return;
     }
-    if(draft){fromSaved(draft);return;}fromSaved(C.initial());
+    if(draft){fromSaved(draft);return;}fromSaved(C.starter());
   }
   async function start(){
     addRangeNumbers(document.querySelector('.id-inspector'));
@@ -1381,5 +1421,22 @@
     }catch(e){seedData(null,null);notice('Template storage unavailable: '+e.message,true);}
     renderOutput();
   }
+  // Small public surface for the optional add-ons (looks gallery, Simple mode). Nothing here changes saved data formats.
+  const defaultFields=C.initial().fields;
+  window.IntroDesigner={
+    current:()=>doc,
+    notice,
+    isDefaultText(){const v=formValues();return C.SLOTS.every(k=>!String(v[k]||'').trim()||String(v[k]).trim()===defaultFields[k]);},
+    // Replace the styling and blocks with a ready-made design. Typed text is kept unless the boxes still hold the placeholders.
+    applyDesign(design,{keepText}={}){
+      templateId=null;
+      if(chooseView)chooseView('visual');
+      fromSaved(design,keepText!==false&&!this.isDefaultText());
+      notice('Look applied. Press Ctrl+Z to undo.');
+    },
+    setPropertyTab,
+    showTab:name=>{(name==='element'?$('id-element-tab'):$('id-theme-tab')).click();},
+    refresh:()=>{renderOutput();}
+  };
   start();
 })();
