@@ -22,7 +22,8 @@ Copy-Item -Path (Join-Path $AppDir '*') -Destination $payloadDir -Recurse -Force
 Remove-Item -LiteralPath (Join-Path $payloadDir 'WebP-Maker.exe') -Force -ErrorAction SilentlyContinue
 if (!(Test-Path (Join-Path $payloadDir $exeName))) { throw "Payload staging failed: $exeName not at payload root." }
 $zip = Join-Path $work 'payload.zip'
-Compress-Archive -Path (Join-Path $payloadDir '*') -DestinationPath $zip -Force
+# Zip the folder itself (reliable nesting) rather than folder\* (which can misplace subfolders).
+Compress-Archive -Path $payloadDir -DestinationPath $zip -Force
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zip))
 
 # 2. The installer script. {{PAYLOAD}} is replaced with the base64 zip.
@@ -39,8 +40,9 @@ try {
   New-Item -ItemType Directory -Path $tmp | Out-Null
   $zip=Join-Path $tmp 'payload.zip'
   [IO.File]::WriteAllBytes($zip,[Convert]::FromBase64String($PAYLOAD))
+  Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
   $src=Join-Path $tmp 'app'
-  Expand-Archive -LiteralPath $zip -DestinationPath $src -Force
+  if(!(Test-Path (Join-Path $src $exeName))){ throw "Payload did not unpack ($exeName not found in $src)." }
 
   # Close any running copy so its folder can be swapped.
   foreach($n in 'WebP-Maker','JuicyChat Creator Tool'){
