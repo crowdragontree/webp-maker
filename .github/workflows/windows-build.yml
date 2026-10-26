@@ -118,6 +118,10 @@ jobs:
           name: Juicy-Chat-Creator-Tools-Windows-x64
           path: WebP-Maker-Windows-x64.zip
           if-no-files-found: error
+  linux:
+    name: Linux (64-bit)
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
