@@ -32,8 +32,8 @@ jobs:
       - name: Build renamed Windows application
         shell: pwsh
         run: |
-          npx @electron/packager . "Juicy Chat Creator Tools" --platform=win32 --arch=x64 --out=dist --overwrite --prune=true --executable-name=WebP-Maker --icon=assets/icon.ico
-          $exe='dist/Juicy Chat Creator Tools-win32-x64/WebP-Maker.exe'
+          npx @electron/packager . "Juicy Chat Creator Tools" --platform=win32 --arch=x64 --out=dist --overwrite --prune=true --executable-name="JuicyChat Creator Tool" --icon=assets/icon.ico
+          $exe='dist/Juicy Chat Creator Tools-win32-x64/JuicyChat Creator Tool.exe'
           if (!(Test-Path $exe)) { throw 'Windows executable is missing.' }
           if (!(Test-Path 'dist/Juicy Chat Creator Tools-win32-x64/resources/app/introduction-designer/layout.js')) { throw 'Introduction snapping engine was not packaged.' }
       - name: TEST actual Windows app - MP4 to WebP (REQUIRED)
@@ -41,7 +41,7 @@ jobs:
         run: |
           $env:CREATOR_TOOLS_E2E_REPORT = Join-Path $env:RUNNER_TEMP 'creator-tools-win-e2e.json'
           $env:JBS_WEBP_MAGICK = ''
-          $exe=(Resolve-Path 'dist/Juicy Chat Creator Tools-win32-x64/WebP-Maker.exe').Path
+          $exe=(Resolve-Path 'dist/Juicy Chat Creator Tools-win32-x64/JuicyChat Creator Tool.exe').Path
           $proc=Start-Process -FilePath $exe -ArgumentList '--creator-tools-e2e' -PassThru
           if (-not $proc.WaitForExit(420000)) {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -85,10 +85,10 @@ jobs:
           test -x resources/webpmaker/linux/magick
       - name: Build renamed Linux application
         run: |
-          npx @electron/packager . 'Juicy Chat Creator Tools' --platform=linux --arch=x64 --out=dist --overwrite --prune=true --executable-name=WebP-Maker --icon=assets/icon.png
-          test -f 'dist/Juicy Chat Creator Tools-linux-x64/WebP-Maker'
+          npx @electron/packager . 'Juicy Chat Creator Tools' --platform=linux --arch=x64 --out=dist --overwrite --prune=true --executable-name="JuicyChat Creator Tool" --icon=assets/icon.png
+          test -f 'dist/Juicy Chat Creator Tools-linux-x64/JuicyChat Creator Tool'
           test -f 'dist/Juicy Chat Creator Tools-linux-x64/resources/app/introduction-designer/layout.js'
-          chmod +x 'dist/Juicy Chat Creator Tools-linux-x64/WebP-Maker'
+          chmod +x 'dist/Juicy Chat Creator Tools-linux-x64/JuicyChat Creator Tool'
           chmod +x 'dist/Juicy Chat Creator Tools-linux-x64/resources/app/resources/webpmaker/linux/magick'
       - name: TEST actual Linux app - MP4 to WebP (REQUIRED)
         run: |
@@ -97,7 +97,7 @@ jobs:
           export CREATOR_TOOLS_E2E_REPORT="$RUNNER_TEMP/creator-tools-linux-e2e.json"
           unset JBS_WEBP_MAGICK || true
           timeout 420s xvfb-run -a --server-args='-screen 0 1600x900x24' \
-            'dist/Juicy Chat Creator Tools-linux-x64/WebP-Maker' --no-sandbox --disable-gpu --creator-tools-e2e
+            'dist/Juicy Chat Creator Tools-linux-x64/JuicyChat Creator Tool' --no-sandbox --disable-gpu --creator-tools-e2e
           test -s "$CREATOR_TOOLS_E2E_REPORT"
           node -e 'const r=require(process.env.CREATOR_TOOLS_E2E_REPORT); if(!r.ok||r.bytes>9990000||r.frames<30||r.width!==480||r.height!==640)process.exit(1); console.log("PASS: Linux packaged app",r.frames,"frames; moving frames by clip",r.unique)'
       - name: Create Linux portable ZIP
