@@ -57,7 +57,7 @@ async function finishRename(){
   const parent=path.dirname(INSTALL_DIR);
   let siblings=[];try{siblings=fs.readdirSync(parent,{withFileTypes:true});}catch{}
   for(const entry of siblings){
-    if(!entry.isDirectory()||!/^\.(webp-maker|jcct)-(backup|stage)-/.test(entry.name))continue;
+    if(!entry.isDirectory()||!/^\.(webp-maker|jcct)-(backup|stage|unpack)-/.test(entry.name))continue;
     const backup=path.join(parent,entry.name);
     if(fs.existsSync(path.join(backup,'resources','app','package.json')))
       await fs.promises.rm(backup,{recursive:true,force:true,maxRetries:5,retryDelay:1000}).catch(()=>{});
@@ -147,7 +147,11 @@ app.whenReady().then(async()=>{
     await updater.check();if(!updater.available)throw Error('Update test: no update offered. '+updater.state.message);
     const stage=await updater.prepare();await updater.launchInstaller(stage);
     quitting=true;app.quit();
-  })().catch(e=>{console.error('UPDATE E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
+  })().catch(e=>{
+    console.error('UPDATE E2E FAILED:',e);
+    try{fs.mkdirSync(path.join(app.getPath('userData'),'updates'),{recursive:true});fs.appendFileSync(path.join(app.getPath('userData'),'updates','last-update.log'),`UPDATE TEST FAILED BEFORE INSTALL: ${e.stack||e}\n`);}catch{}
+    process.exitCode=1;quitting=true;app.quit();
+  });
   else if(E2E)require('./scripts/e2e-desktop').run({app,win,maker,dialog,root:__dirname}).catch(e=>{console.error('E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
 }).catch(e=>{console.error(e);app.quit();});
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
