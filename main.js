@@ -1,10 +1,62 @@
 'use strict';
 const path=require('node:path');
+const fs=require('node:fs');
+const {spawn}=require('node:child_process');
 const {app,BrowserWindow,ipcMain,dialog,clipboard,Notification,shell,nativeImage}=require('electron');
 const {WebpMaker}=require('./lib/webpMaker');
 const {create:createIntroService}=require('./introduction-designer/inline-host');
 const {PortableUpdater}=require('./lib/portableUpdater');
 const E2E=process.argv.includes('--creator-tools-e2e');
+// The program used to be WebP-Maker(.exe). Copies from v1.0.2-v1.1.0 only accept
+// an update that contains that file name, and restart it afterwards. Releases
+// therefore also ship a WebP-Maker copy, which immediately hands over to
+// JuicyChat Creator Tool; that one then removes the old name (finishRename).
+const EXE_NAME=process.platform==='win32'?'JuicyChat Creator Tool.exe':'JuicyChat Creator Tool';
+const LEGACY_EXE_NAME=process.platform==='win32'?'WebP-Maker.exe':'WebP-Maker';
+const INSTALL_DIR=path.dirname(process.execPath);
+if(app.isPackaged&&path.basename(process.execPath)===LEGACY_EXE_NAME&&fs.existsSync(path.join(INSTALL_DIR,EXE_NAME))){
+  const next=path.join(INSTALL_DIR,EXE_NAME);
+  if(process.platform!=='win32')for(const f of [EXE_NAME,'chrome_crashpad_handler'])try{fs.chmodSync(path.join(INSTALL_DIR,f),0o755);}catch{}
+  spawn(next,process.argv.slice(1),{cwd:INSTALL_DIR,detached:true,stdio:'ignore'}).unref();
+  process.exit(0);
+}
+async function finishRename(){
+  if(!app.isPackaged||E2E||path.basename(process.execPath)!==EXE_NAME)return;
+  const legacy=path.join(INSTALL_DIR,LEGACY_EXE_NAME);
+  // Windows: shortcuts and pins that still open WebP-Maker.exe now open the new name.
+  if(process.platform==='win32'){
+    const roaming=app.getPath('appData');
+    for(const dir of [app.getPath('desktop'),path.join(roaming,'Microsoft','Windows','Start Menu','Programs'),
+      path.join(roaming,'Microsoft','Internet Explorer','Quick Launch'),
+      path.join(roaming,'Microsoft','Internet Explorer','Quick Launch','User Pinned','TaskBar'),
+      path.join(roaming,'Microsoft','Internet Explorer','Quick Launch','User Pinned','StartMenu')]){
+      let links=[];try{links=fs.readdirSync(dir).filter(n=>/\.lnk$/i.test(n));}catch{continue;}
+      for(const name of links){
+        const link=path.join(dir,name);
+        try{
+          const info=shell.readShortcutLink(link);
+          if(path.resolve(info.target).toLowerCase()===legacy.toLowerCase())
+            shell.writeShortcutLink(link,'update',{target:process.execPath,cwd:INSTALL_DIR,icon:process.execPath,iconIndex:0});
+        }catch{}
+      }
+    }
+  }
+  // Remove the old program name once the hand-over process has exited.
+  for(let i=0;i<60&&fs.existsSync(legacy);i++){
+    try{fs.rmSync(legacy,{force:true});}catch{await new Promise(r=>setTimeout(r,500));}
+  }
+  // Remove previous-version backups left next to the app by both updaters.
+  const parent=path.dirname(INSTALL_DIR);
+  let siblings=[];try{siblings=fs.readdirSync(parent,{withFileTypes:true});}catch{}
+  for(const entry of siblings){
+    if(!entry.isDirectory()||!/^\.(webp-maker|jcct)-backup-/.test(entry.name))continue;
+    const backup=path.join(parent,entry.name);
+    if(fs.existsSync(path.join(backup,'resources','app','package.json')))
+      await fs.promises.rm(backup,{recursive:true,force:true,maxRetries:5,retryDelay:1000}).catch(()=>{});
+  }
+  const oldMarker=path.join(app.getPath('appData'),'WebP Maker','updates','pending-update.json');
+  try{if(JSON.parse(fs.readFileSync(oldMarker,'utf8')).target===INSTALL_DIR)fs.rmSync(oldMarker,{force:true});}catch{}
+}
 app.setName('Juicy Chat Creator Tools');
 const lock=app.requestSingleInstanceLock();
 let win=null,maker=null,updater=null,intro=null,quitting=false;
@@ -73,6 +125,7 @@ app.whenReady().then(async()=>{
     quitting=true;app.quit();return {restarting:true};
   });
   launch();
+  if(!E2E)setTimeout(()=>finishRename().catch(()=>{}),3000).unref();
   if(!E2E){setTimeout(()=>updater.check({silent:true}),4500).unref();setInterval(()=>updater.check({silent:true}),6*60*60*1000).unref();}
   if(E2E)require('./scripts/e2e-desktop').run({app,win,maker,dialog,root:__dirname}).catch(e=>{console.error('E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
 }).catch(e=>{console.error(e);app.quit();});
