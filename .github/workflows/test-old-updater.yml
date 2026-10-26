@@ -1,0 +1,94 @@
+name: Test old v1.0.3 auto-update on a clean Windows PC
+
+# Runs only when this file changes or when started by hand from the Actions tab.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-old-updater.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  old-updater:
+    name: v1.0.3 -> latest (${{ matrix.mode }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # exact: the old app quits right after starting its installer, as it really does.
+        # delayed-quit: same, but the app waits 10 seconds first (diagnostic only).
+        mode: [exact, delayed-quit]
+    steps:
+      - name: Install the real v1.0.3 and run its own built-in updater
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD_TEST_MODE: ${{ matrix.mode }}
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'old test'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          $zip = Join-Path $root 'v1.0.3.zip'
+          Invoke-WebRequest 'https://github.com/crowdragontree/webp-maker/releases/download/v1.0.3/WebP-Maker-Windows-x64.zip' -OutFile $zip
+          $install = Join-Path $root 'WebP-Maker'
+          Expand-Archive -LiteralPath $zip -DestinationPath $install
+          Remove-Item -LiteralPath $zip
+
+          # The newest published release, exactly what a user's copy would be offered.
+          $release = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } 'https://api.github.com/repos/crowdragontree/webp-maker/releases/latest'
+          Write-Host "Latest release: $($release.tag_name)"
+          $env:OLD_TEST_RELEASE = Join-Path $root 'release.json'
+          $release | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $env:OLD_TEST_RELEASE -Encoding utf8
+
+          # Replace only v1.0.3's startup file with one that clicks "Update and restart" for us.
+          # The updater code and installer script are v1.0.3's own, unchanged.
+          $harness = @'
+          'use strict';
+          const {app,BrowserWindow}=require('electron');
+          const path=require('path'),fs=require('fs');
+          const {PortableUpdater}=require('./lib/portableUpdater');
+          app.setName('WebP Maker');
+          let win;
+          app.whenReady().then(async()=>{
+            win=new BrowserWindow({width:900,height:600,show:true});win.loadURL('about:blank');
+            const release=JSON.parse(fs.readFileSync(process.env.OLD_TEST_RELEASE,'utf8').replace(/^\uFEFF/,''));
+            const updater=new PortableUpdater({version:app.getVersion(),platform:process.platform,
+              appRoot:__dirname,installDir:path.dirname(app.getPath('exe')),
+              userData:app.getPath('userData'),packaged:app.isPackaged,
+              fetchRelease:async()=>release,onStatus:s=>console.log('[updater]',s.phase,s.message||'')});
+            try{
+              await updater.check();
+              if(!updater.available)throw Error('No update offered: '+updater.state.message);
+              await updater.prepare();
+              await updater.launchInstaller();
+              if(process.env.OLD_TEST_MODE==='delayed-quit')await new Promise(r=>setTimeout(r,10000));
+              app.quit();
+            }catch(e){console.error('HARNESS ERROR:',e);app.exit(3);}
+          });
+          '@
+          Set-Content -LiteralPath (Join-Path $install 'resources/app/main.js') -Value $harness -Encoding utf8
+
+          $old = Start-Process -FilePath (Join-Path $install 'WebP-Maker.exe') -PassThru -RedirectStandardOutput (Join-Path $root 'old-out.txt') -RedirectStandardError (Join-Path $root 'old-err.txt')
+          if (-not $old.WaitForExit(300000)) { Stop-Process -Id $old.Id -Force; throw 'v1.0.3 never closed to install the update.' }
+          Write-Host "v1.0.3 closed (exit code $($old.ExitCode))."
+          Get-Content (Join-Path $root 'old-out.txt'), (Join-Path $root 'old-err.txt') -ErrorAction SilentlyContinue | Select-String 'updater|HARNESS' | ForEach-Object { Write-Host $_ }
+
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            $pkg = Get-Content (Join-Path $install 'resources/app/package.json') -Raw -ErrorAction SilentlyContinue
+            $running = Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue
+            if ($pkg -match ('"version": "' + [regex]::Escape($release.tag_name.TrimStart('v')) + '"') -and $running) { $ok = $true; break }
+            Start-Sleep -Seconds 2
+          }
+          Start-Sleep -Seconds 15
+          Write-Host '--- v1.0.3 installer log:'
+          $logs = Get-ChildItem (Join-Path $env:APPDATA 'WebP Maker/updates') -Recurse -Filter 'install.log' -ErrorAction SilentlyContinue
+          if ($logs) { $logs | ForEach-Object { Get-Content $_.FullName } } else { Write-Host '(no install.log: the installer never ran its first line)' }
+          Write-Host '--- app folder:'; Get-ChildItem -LiteralPath $install -Filter '*.exe' | ForEach-Object { Write-Host $_.Name }
+          Write-Host '--- next to the app:'; Get-ChildItem -LiteralPath $root -Force -Directory | ForEach-Object { Write-Host $_.Name }
+          Get-Process -Name 'JuicyChat Creator Tool','WebP-Maker' -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $ok) { throw "RESULT ($env:OLD_TEST_MODE): v1.0.3 did NOT update itself on a clean Windows PC." }
+          if (Test-Path (Join-Path $install 'WebP-Maker.exe')) { throw 'RESULT: updated, but WebP-Maker.exe was not removed.' }
+          Write-Host "RESULT ($env:OLD_TEST_MODE): v1.0.3 updated itself, restarted as JuicyChat Creator Tool.exe, and WebP-Maker.exe is gone."
