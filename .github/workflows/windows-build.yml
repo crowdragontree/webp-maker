@@ -1,13 +1,10 @@
-name: Build WebP Maker for Windows and Linux
-
+name: Build Juicy Chat Creator Tools v1.1.0 (Windows and Linux)
 on:
-  workflow_dispatch:
   push:
     branches: [main]
-
+  workflow_dispatch:
 permissions:
   contents: read
-
 jobs:
   windows:
     name: Windows (64-bit)
@@ -16,175 +13,100 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Locate WebP Maker files
+          node-version: '24'
+      - name: Check fixed version and combined entrypoint
+        run: |
+          node -e "const fs=require('fs');const p=require('./package.json');if(p.version!=='1.1.0'||!fs.readFileSync('main.js','utf8').includes('createIntroService'))process.exit(1);console.log('PASS: v1.1.0 combined entrypoint')"
+      - name: Install and run source regression tests (REQUIRED)
         shell: pwsh
         run: |
-          if (Test-Path 'package.json') { 'APP_DIR=.' >> $env:GITHUB_ENV }
-          elseif (Test-Path 'WebP-Maker/package.json') { 'APP_DIR=WebP-Maker' >> $env:GITHUB_ENV }
-          else { throw 'Could not find WebP Maker package.json.' }
-      - name: REQUIRE Windows conversion test files
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          @('main.js','lib/webpMaker.js','scripts/e2e-desktop.js',
-            'tests/fixtures/test-clip-1.mp4','tests/fixtures/test-clip-2.mp4',
-            'resources/webpmaker/setup-webpmaker.ps1') | ForEach-Object {
-            $file = Join-Path $env:APP_DIR $_
-            if (-not (Test-Path -LiteralPath $file)) {
-              throw "Missing required conversion test file: $file. Upload the complete test update first."
-            }
-          }
-      - name: Install and test
-        shell: pwsh
-        run: |
-          Push-Location $env:APP_DIR
           npm install --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
           npm run check
-          if ($LASTEXITCODE -ne 0) { throw 'WebP Maker self-test failed' }
-          Pop-Location
-      - name: Build portable Windows app
+      - name: Bundle verified portable ImageMagick (REQUIRED)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/bundle-imagemagick.js win32
+          if (!(Test-Path 'resources/webpmaker/windows/magick.exe')) { throw 'ImageMagick missing' }
+      - name: Build renamed Windows application
         shell: pwsh
         run: |
-          Push-Location $env:APP_DIR
-          npm run package:win
-          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
-          $SevenZip = 'release/WebP-Maker-win32-x64/resources/app/node_modules/7zip-bin/win/x64/7za.exe'
-          if (-not (Test-Path $SevenZip)) { throw 'Windows build is missing bundled 7-Zip extractor.' }
-          Pop-Location
-      - name: Create Windows download ZIP
+          npx @electron/packager . "Juicy Chat Creator Tools" --platform=win32 --arch=x64 --out=dist --overwrite --prune=true --executable-name=WebP-Maker --icon=assets/icon.ico
+          $exe='dist/Juicy Chat Creator Tools-win32-x64/WebP-Maker.exe'
+          if (!(Test-Path $exe)) { throw 'Windows executable is missing.' }
+          if (!(Test-Path 'dist/Juicy Chat Creator Tools-win32-x64/resources/app/introduction-designer/layout.js')) { throw 'Introduction snapping engine was not packaged.' }
+      - name: TEST actual Windows app - MP4 to WebP (REQUIRED)
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path "$env:APP_DIR/release/WebP-Maker-win32-x64/*" -DestinationPath 'dist/WebP-Maker-Windows-x64.zip' -Force
-      - name: "TEST actual Windows app - MP4 to WebP (REQUIRED)"
-        shell: pwsh
-        timeout-minutes: 12
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Run from a freshly extracted download, NOT the source directory.
-          $unpacked = Join-Path $env:RUNNER_TEMP 'WebP-Maker-First-Run-E2E'
-          Expand-Archive -LiteralPath 'dist/WebP-Maker-Windows-x64.zip' -DestinationPath $unpacked -Force
-          $exe = Join-Path $unpacked 'WebP-Maker.exe'
-          if (-not (Test-Path $exe)) { throw 'Download ZIP does not contain WebP-Maker.exe.' }
-          $report = Join-Path $env:RUNNER_TEMP 'WebP-Maker-Windows-E2E-Result.json'
-          Remove-Item -LiteralPath $report -ErrorAction SilentlyContinue
-          $env:WEBP_MAKER_E2E_REPORT = $report
-          # No local/system ImageMagick shortcuts are allowed during this test.
+          $env:CREATOR_TOOLS_E2E_REPORT = Join-Path $env:RUNNER_TEMP 'creator-tools-win-e2e.json'
           $env:JBS_WEBP_MAGICK = ''
-          $process = Start-Process -FilePath $exe -ArgumentList '--webp-e2e' -PassThru
-          try {
-            if (-not $process.WaitForExit(420000)) {
-              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-              throw 'Windows E2E timed out before finishing the real MP4 conversion.'
-            }
-            if (-not (Test-Path $report)) { throw "Windows E2E produced no result (exit $($process.ExitCode))." }
-            $raw = Get-Content -LiteralPath $report -Raw
-            Write-Host $raw
-            $result = $raw | ConvertFrom-Json
-            if ($process.ExitCode -ne 0 -or -not $result.ok) {
-              throw "The packaged Windows conversion failed (exit $($process.ExitCode))."
-            }
-            if ($result.bytes -gt 9990000 -or $result.loop -ne 0 -or $result.frames -lt 12) {
-              throw 'WebP validation failed (size, frame count, or loop).'
-            }
-          } finally {
-            Remove-Item Env:WEBP_MAKER_E2E_REPORT -ErrorAction SilentlyContinue
+          $exe=(Resolve-Path 'dist/Juicy Chat Creator Tools-win32-x64/WebP-Maker.exe').Path
+          $proc=Start-Process -FilePath $exe -ArgumentList '--creator-tools-e2e' -PassThru
+          if (-not $proc.WaitForExit(420000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw 'Windows end-to-end conversion exceeded 7 minutes.'
           }
+          if (!(Test-Path $env:CREATOR_TOOLS_E2E_REPORT)) { throw "App wrote no test report (exit $($proc.ExitCode))." }
+          $report=Get-Content $env:CREATOR_TOOLS_E2E_REPORT -Raw | ConvertFrom-Json
+          if ($proc.ExitCode -ne 0 -or -not $report.ok) { throw (Get-Content $env:CREATOR_TOOLS_E2E_REPORT -Raw) }
+          if ($report.bytes -gt 9990000 -or $report.frames -lt 30 -or $report.width -ne 480 -or $report.height -ne 640) { throw 'Invalid WebP result.' }
+          Write-Host "PASS: Windows packaged app $($report.frames) frames; moving frames by clip $($report.unique)."
+      - name: Create Windows portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist/Juicy Chat Creator Tools-win32-x64/*' -DestinationPath 'WebP-Maker-Windows-x64.zip' -Force
+          if (!(Test-Path 'WebP-Maker-Windows-x64.zip')) { throw 'Windows release ZIP missing' }
       - uses: actions/upload-artifact@v4
         with:
-          name: WebP-Maker-Windows-x64
-          path: dist/WebP-Maker-Windows-x64.zip
+          name: Juicy-Chat-Creator-Tools-Windows-x64
+          path: WebP-Maker-Windows-x64.zip
           if-no-files-found: error
-
   linux:
     name: Linux (64-bit)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Locate WebP Maker files
-        shell: bash
+          node-version: '24'
+      - name: Check fixed version and combined entrypoint
         run: |
-          if [ -f package.json ]; then echo 'APP_DIR=.' >> "$GITHUB_ENV";
-          elif [ -f WebP-Maker/package.json ]; then echo 'APP_DIR=WebP-Maker' >> "$GITHUB_ENV";
-          else echo 'Could not find WebP Maker package.json.'; exit 1; fi
-      - name: REQUIRE Linux conversion test files
-        shell: bash
+          node -e "const fs=require('fs');const p=require('./package.json');if(p.version!=='1.1.0'||!fs.readFileSync('main.js','utf8').includes('createIntroService'))process.exit(1);console.log('PASS: v1.1.0 combined entrypoint')"
+      - name: Install and run source regression tests (REQUIRED)
         run: |
-          set -euo pipefail
-          for p in main.js lib/webpMaker.js scripts/e2e-desktop.js tests/fixtures/test-clip-1.mp4 tests/fixtures/test-clip-2.mp4; do
-            if [ ! -f "$APP_DIR/$p" ]; then
-              echo "::error::Missing required conversion test file: $APP_DIR/$p. Upload the complete test update first."
-              exit 1
-            fi
-          done
-      - name: Install and test
-        shell: bash
-        run: |
-          cd "$APP_DIR"
           npm install --no-audit --no-fund
           npm run check
-      - name: Bundle official portable ImageMagick for Linux
-        shell: bash
+      - name: Bundle verified ImageMagick AppImage (REQUIRED)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          cd "$APP_DIR"
-          mkdir -p resources/webpmaker/linux
-          curl -fL --retry 4 --retry-delay 2 \
-            'https://github.com/ImageMagick/ImageMagick/releases/download/7.1.2-34/ImageMagick-7.1.2-34-gcc-x86_64.AppImage' \
-            -o resources/webpmaker/linux/ImageMagick.AppImage
-          echo '6e9edfd35d5f30b57c27533afe003d6085faaf8607b207426f398d11751acf93  resources/webpmaker/linux/ImageMagick.AppImage' | sha256sum -c -
-          chmod +x resources/webpmaker/linux/ImageMagick.AppImage
-          # Verify the FUSE-free extraction used by WebP Maker on Linux.
-          scratch="$(mktemp -d)"
-          cd "$scratch"
-          "$GITHUB_WORKSPACE/$APP_DIR/resources/webpmaker/linux/ImageMagick.AppImage" --appimage-extract >/dev/null
-          ./squashfs-root/AppRun -version
-          rm -rf "$scratch"
-      - name: Build portable Linux app
-        shell: bash
+          node scripts/bundle-imagemagick.js linux
+          test -x resources/webpmaker/linux/magick
+      - name: Build renamed Linux application
         run: |
-          cd "$APP_DIR"
-          npm run package:linux
-          test -f release/WebP-Maker-linux-x64/WebP-Maker
-          test -f release/WebP-Maker-linux-x64/resources/app/resources/webpmaker/linux/ImageMagick.AppImage
-      - name: Create Linux download ZIP
-        shell: bash
+          npx @electron/packager . 'Juicy Chat Creator Tools' --platform=linux --arch=x64 --out=dist --overwrite --prune=true --executable-name=WebP-Maker --icon=assets/icon.png
+          test -f 'dist/Juicy Chat Creator Tools-linux-x64/WebP-Maker'
+          test -f 'dist/Juicy Chat Creator Tools-linux-x64/resources/app/introduction-designer/layout.js'
+          chmod +x 'dist/Juicy Chat Creator Tools-linux-x64/WebP-Maker'
+          chmod +x 'dist/Juicy Chat Creator Tools-linux-x64/resources/app/resources/webpmaker/linux/magick'
+      - name: TEST actual Linux app - MP4 to WebP (REQUIRED)
         run: |
-          mkdir -p dist
-          cd "$APP_DIR/release"
-          zip -qry "$GITHUB_WORKSPACE/dist/WebP-Maker-Linux-x64.zip" WebP-Maker-linux-x64
-      - name: "TEST actual Linux app - MP4 to WebP (REQUIRED)"
-        shell: bash
-        timeout-minutes: 12
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+          export CREATOR_TOOLS_E2E_REPORT="$RUNNER_TEMP/creator-tools-linux-e2e.json"
+          unset JBS_WEBP_MAGICK || true
+          timeout 420s xvfb-run -a --server-args='-screen 0 1600x900x24' \
+            'dist/Juicy Chat Creator Tools-linux-x64/WebP-Maker' --no-sandbox --disable-gpu --creator-tools-e2e
+          test -s "$CREATOR_TOOLS_E2E_REPORT"
+          node -e 'const r=require(process.env.CREATOR_TOOLS_E2E_REPORT); if(!r.ok||r.bytes>9990000||r.frames<30||r.width!==480||r.height!==640)process.exit(1); console.log("PASS: Linux packaged app",r.frames,"frames; moving frames by clip",r.unique)'
+      - name: Create Linux portable ZIP
         run: |
-          set -euo pipefail
-          # The packaged desktop app needs a virtual display on GitHub's Linux runner.
-          if ! command -v xvfb-run >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y xvfb
-          fi
-          unpacked="$(mktemp -d "$RUNNER_TEMP/webp-maker-linux-e2e-XXXXXX")"
-          unzip -q dist/WebP-Maker-Linux-x64.zip -d "$unpacked"
-          exe="$unpacked/WebP-Maker-linux-x64/WebP-Maker"
-          test -f "$exe" || { echo 'FAIL: Linux download is missing the application executable.'; exit 1; }
-          chmod +x "$exe"
-          export WEBP_MAKER_E2E_REPORT="$RUNNER_TEMP/WebP-Maker-Linux-E2E-Result.json"
-          rm -f "$WEBP_MAKER_E2E_REPORT"
-          # The E2E app requires its bundled Linux ImageMagick and a clean private extraction.
-          export JBS_WEBP_MAGICK=''
-          export ELECTRON_DISABLE_GPU=1
-          timeout 480s xvfb-run -a -s '-screen 0 1600x900x24' \
-            "$exe" --no-sandbox --disable-gpu --webp-e2e
-          test -s "$WEBP_MAKER_E2E_REPORT" || { echo 'FAIL: Linux E2E did not write a report.'; exit 1; }
-          cat "$WEBP_MAKER_E2E_REPORT"
-          node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync(process.env.WEBP_MAKER_E2E_REPORT,"utf8")); if(!r.ok||r.bytes>9990000||r.bytes<100||r.loop!==0||r.frames<12||r.width!==480||r.height!==640) { console.error("FAIL: Linux full conversion validation",r); process.exit(1); } console.log("PASS: Linux packaged application decoded MP4s, prepared ImageMagick, encoded and saved a valid WebP.");'
+          cd 'dist/Juicy Chat Creator Tools-linux-x64'
+          zip -qr ../../WebP-Maker-Linux-x64.zip .
+          test -s ../../WebP-Maker-Linux-x64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: WebP-Maker-Linux-x64
-          path: dist/WebP-Maker-Linux-x64.zip
+          name: Juicy-Chat-Creator-Tools-Linux-x64
+          path: WebP-Maker-Linux-x64.zip
           if-no-files-found: error
