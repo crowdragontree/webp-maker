@@ -1,80 +1,114 @@
 'use strict';
-const path=require('node:path');
-const {app,BrowserWindow,ipcMain,dialog,clipboard,Notification,shell,nativeImage}=require('electron');
-const {WebpMaker}=require('./lib/webpMaker');
-const {create:createIntroService}=require('./introduction-designer/inline-host');
-const {PortableUpdater}=require('./lib/portableUpdater');
-const E2E=process.argv.includes('--creator-tools-e2e');
-app.setName('Juicy Chat Creator Tools');
-const lock=app.requestSingleInstanceLock();
-let win=null,maker=null,updater=null,intro=null,quitting=false;
-if(!lock)app.quit();
-else app.on('second-instance',()=>{if(win&&!win.isDestroyed()){win.show();win.focus();}});
-function send(channel,value){if(win&&!win.isDestroyed()&&!win.webContents.isDestroyed())win.webContents.send(channel,value);}
-function conversionActive(){return !!maker?.job&&!maker.job.cancelled;}
-function launch(){
-  const icon=path.join(__dirname,'assets','icon.png');
-  win=new BrowserWindow({width:1550,height:1030,minWidth:1050,minHeight:720,show:false,title:'Juicy Chat Creator Tools',backgroundColor:'#100b16',autoHideMenuBar:true,
-    icon,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,webviewTag:false}});
-  win.loadFile(path.join(__dirname,'renderer','index.html'));
-  win.once('ready-to-show',()=>{win.show();});
-  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-  win.webContents.on('will-navigate',(event,url)=>{const wanted=new URL('file://'+path.join(__dirname,'renderer','index.html')).href;if(url!==wanted)event.preventDefault();});
-  win.on('close',async event=>{
-    if(quitting||!conversionActive())return;
-    event.preventDefault();
-    const choice=await dialog.showMessageBox(win,{type:'warning',title:'Juicy Chat Creator Tools',message:'Abort the WebP conversion and exit?',
-      detail:'The current WebP conversion will stop and its unfinished output will be discarded. Introduction Editor drafts are autosaved.',
-      buttons:['Keep converting','Abort conversion and exit'],defaultId:0,cancelId:0,noLink:true});
-    if(choice.response===1){maker.cancel();quitting=true;win.close();}
-  });
-  win.on('closed',()=>{win=null;});
+const {app,BrowserWindow,ipcMain,dialog}=require('electron');
+const path=require('path');
+const fs=require('fs');
+const os=require('os');
+const E2E=process.argv.includes('--webp-e2e') && !!process.env.WEBP_MAKER_E2E_REPORT;
+// Packaged-app E2E must have an active compositor for HTML5 video frame capture.
+// These flags are NEVER set for normal users or normal conversions.
+if(E2E){
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 }
-app.whenReady().then(async()=>{
-  if(!lock)return;
-  maker=new WebpMaker({appRoot:__dirname,userData:app.getPath('userData'),onProgress:data=>send('webpmaker:progress',data)});
-  intro=createIntroService({app,clipboard,dialog,onClose:()=>send('creator-tools:select-tab','webpmaker')});
-  const verifySender=event=>{
-    if(!win||win.isDestroyed()||event.sender!==win.webContents)throw Error('Action requires the Juicy Chat Creator Tools desktop window.');
-  };
-  for(const [name,method] of Object.entries({begin:'begin',frame:'frame',finish:'finish',cancel:'cancel',preview:'preview'})){
-    ipcMain.handle('webpmaker:'+name,(event,...args)=>{verifySender(event);return maker[method](...args);});
+const {WebpMaker}=require('./lib/webpMaker');
+const {PortableUpdater}=require('./lib/portableUpdater');
+let win,maker,updater,quitting=false;
+app.setName('WebP Maker');
+const getWindow=()=>win&&!win.isDestroyed()?win:null;
+function create(){
+  win=new BrowserWindow({width:1380,height:820,minWidth:980,minHeight:600,backgroundColor:'#0e0b12',show:E2E,
+    icon:path.join(__dirname,'assets','icon.png'),webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:false,backgroundThrottling:!E2E,preload:path.join(__dirname,'preload.js')}});
+  win.loadFile(path.join(__dirname,'renderer','index.html'));
+  win.once('ready-to-show',()=>{if(!E2E)win.show();});
+  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  win.webContents.on('will-navigate',e=>e.preventDefault());
+  // Fail immediately if the E2E renderer crashes instead of waiting 7-8 minutes.
+  if(E2E)win.webContents.on('render-process-gone',(_event,details)=>{
+    const message=`Electron video renderer exited: ${details.reason} (code ${details.exitCode})`;
+    console.error(`[WebP Maker E2E] ${message}`);
+    try{fs.writeFileSync(process.env.WEBP_MAKER_E2E_REPORT,
+      JSON.stringify({ok:false,stage:'renderer-crashed',error:message},null,2));}catch{}
+    quitting=true;
+    app.exit(1);
+  });
+  win.on('close',e=>{
+    if(quitting||!maker?.job||maker.job.cancelled)return;
+    e.preventDefault();
+    dialog.showMessageBox(win,{type:'warning',title:'WebP conversion in progress',message:'Abort conversion and exit?',
+      detail:'Closing will discard the current conversion. Your MP4 files are not changed.',
+      buttons:['Keep converting','Abort conversion & Exit'],defaultId:0,cancelId:0}).then(r=>{
+        if(r.response!==1)return;quitting=true;try{maker.cancel();}catch{}win.close();
+      });
+  });
+}
+app.whenReady().then(()=>{
+  // No file is transmitted to a server. Portable ImageMagick is obtained only once.
+  const e2eTools=E2E?fs.mkdtempSync(path.join(os.tmpdir(),'webpmaker-e2e-tools-')):null;
+  let lastE2eProgress='';
+  maker=new WebpMaker({appRoot:__dirname,userData:app.getPath('userData'),
+    toolsDir:e2eTools||path.join(app.getPath('userData'),'webp-maker-tools'),
+    forcePrivateImageMagick:E2E,
+    onProgress:data=>{
+      if(E2E){
+        const message=`${data.title||''} | ${data.detail||''} | ${data.percent||0}%`;
+        if(message!==lastE2eProgress){
+          console.log(`[WebP Maker E2E progress] ${message}`);
+          lastE2eProgress=message;
+        }
+      }
+      getWindow()?.webContents.send('webpmaker:progress',data);
+    }});
+  ipcMain.handle('webpmaker:begin',(_,opts)=>maker.begin(opts));
+  ipcMain.handle('webpmaker:frame',(_,frame)=>maker.frame(frame));
+  ipcMain.handle('webpmaker:finish',()=>maker.finish());
+  ipcMain.handle('webpmaker:cancel',()=>maker.cancel());
+  ipcMain.handle('webpmaker:preview',()=>maker.preview());
+  ipcMain.handle('webpmaker:save',async(_,suggested)=>{
+    if(!maker.resultPath())throw new Error('Convert an animation before saving it.');
+    const safe=String(suggested||'Animation.webp').replace(/[\\/:*?"<>|]/g,'_').replace(/\.webp$/i,'')+'.webp';
+    const r=await dialog.showSaveDialog(getWindow(),{title:'Save animated WebP',defaultPath:safe,filters:[{name:'Animated WebP',extensions:['webp']}]});
+    return r.canceled||!r.filePath?{canceled:true}:maker.save(r.filePath);
+  });
+  // Portable ZIP apps check published GitHub releases automatically, without sending videos.
+  updater=new PortableUpdater({version:app.getVersion(),platform:process.platform,
+    appRoot:__dirname,installDir:path.dirname(app.getPath('exe')),
+    userData:app.getPath('userData'),packaged:app.isPackaged,
+    isBusy:()=>!!maker?.job&&!maker.job.cancelled,
+    onStatus:state=>getWindow()?.webContents.send('updates:status',state)});
+  ipcMain.handle('updates:state',()=>updater.state);
+  ipcMain.handle('updates:check',()=>updater.check());
+  ipcMain.handle('updates:install',async()=>{
+    if(!updater.available)throw new Error('Check for updates first.');
+    if(maker?.job&&!maker.job.cancelled)throw new Error('Finish or cancel the current WebP conversion before updating.');
+    const decision=await dialog.showMessageBox(getWindow(),{type:'question',
+      title:'Install WebP Maker update?',message:`Update to WebP Maker v${updater.available.version}?`,
+      detail:'The app will download a verified copy from your GitHub Releases, close, replace its portable files, and restart. No videos are uploaded.',
+      buttons:['Update and restart','Not now'],defaultId:0,cancelId:1});
+    if(decision.response!==0)return {cancelled:true};
+    await updater.prepare();
+    await updater.launchInstaller();
+    quitting=true;app.quit();
+    return {restarting:true};
+  });
+  create();
+  if(!E2E){
+    setTimeout(()=>updater.cleanupSuccessfulUpdate().catch(console.error),1500).unref();
+    setTimeout(()=>updater.check({silent:true}).catch(console.error),3500).unref();
+    setInterval(()=>updater.check({silent:true}).catch(console.error),6*60*60*1000).unref();
   }
-  ipcMain.handle('webpmaker:save',async(event,suggested)=>{
-    verifySender(event);
-    if(!maker.resultPath())throw Error('Convert a WebP before saving.');
-    const safeName=String(suggested||'Animation.webp').replace(/[\\/:*?"<>|]/g,'_').replace(/\.webp$/i,'')+'.webp';
-    const saved=await dialog.showSaveDialog(win,{title:'Save animated WebP',defaultPath:safeName,filters:[{name:'Animated WebP',extensions:['webp']}]});
-    return saved.canceled||!saved.filePath?{canceled:true}:maker.save(saved.filePath);
-  });
-  ipcMain.handle('webpmaker:notify',(event,status)=>{
-    verifySender(event);if(status!=='complete'&&status!=='failed')return false;
-    try{
-      if(!Notification.isSupported()||win?.isFocused())return false;
-      const complete=status==='complete';const notification=new Notification({title:complete?'WebP conversion complete':'WebP conversion failed',body:complete?'Your animation is ready to preview and save.':'Switch to WebP Maker to see details.'});
-      notification.on('click',()=>{if(win&&!win.isDestroyed()){win.show();win.focus();send('creator-tools:select-tab','webpmaker');}});
-      notification.show();return true;
-    }catch{return false;}
-  });
-  ipcMain.handle('creator-tools:intro',(event,action,args)=>{verifySender(event);return intro.handle(action,args);});
-  updater=new PortableUpdater({version:app.getVersion(),platform:process.platform,appRoot:__dirname,packaged:app.isPackaged,
-    installDir:path.dirname(app.getPath('exe')),userData:app.getPath('userData'),busy:conversionActive,onStatus:status=>send('updates:status',status)});
-  ipcMain.handle('updates:state',event=>{verifySender(event);return updater.state;});
-  ipcMain.handle('updates:check',event=>{verifySender(event);return updater.check();});
-  ipcMain.handle('updates:install',async event=>{
-    verifySender(event);
-    if(conversionActive())throw Error('Finish or cancel the current WebP conversion before updating.');
-    if(!updater.available)throw Error('Check for updates first.');
-    const choice=await dialog.showMessageBox(win,{type:'question',title:'Install update?',message:`Update Juicy Chat Creator Tools to v${updater.available.version}?`,
-      detail:'A verified ZIP from GitHub will replace the portable app after it closes, then restart it. Your Introduction templates and video files stay on your computer.',
-      buttons:['Update & Restart','Not now'],defaultId:0,cancelId:1});
-    if(choice.response!==0)return {cancelled:true};
-    const stage=await updater.prepare();await updater.launchInstaller(stage);
-    quitting=true;app.quit();return {restarting:true};
-  });
-  launch();
-  if(!E2E){setTimeout(()=>updater.check({silent:true}),4500).unref();setInterval(()=>updater.check({silent:true}),6*60*60*1000).unref();}
-  if(E2E)require('./scripts/e2e-desktop').run({app,win,maker,dialog,root:__dirname}).catch(e=>{console.error('E2E FAILED:',e);process.exitCode=1;quitting=true;app.quit();});
-}).catch(e=>{console.error(e);app.quit();});
-app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
-app.on('before-quit',()=>{quitting=true;});
+  if(E2E){
+    // Runs against the ACTUAL packaged Windows or Linux application, using Electron's
+    // MP4 decoder, the existing UI/IPC, and freshly downloaded ImageMagick.
+    require('./scripts/e2e-desktop').run({win,maker,appRoot:__dirname,toolsDir:e2eTools,
+      reportPath:process.env.WEBP_MAKER_E2E_REPORT}).then(()=>{
+      quitting=true;app.exit(0);
+    }).catch(error=>{
+      console.error(`WebP Maker ${process.platform} E2E FAILED:`,error);
+      try{fs.writeFileSync(process.env.WEBP_MAKER_E2E_REPORT,JSON.stringify({ok:false,error:String(error?.stack||error)},null,2));}catch{}
+      quitting=true;app.exit(1);
+    });
+  }
+});
+app.on('before-quit',()=>{quitting=true;try{maker?.dispose();}catch{}});
+app.on('window-all-closed',()=>app.quit());
