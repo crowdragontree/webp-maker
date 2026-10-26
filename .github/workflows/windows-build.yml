@@ -105,6 +105,32 @@ jobs:
           if ($leftovers) { throw "Update folders were left behind: $($leftovers.Name -join ', ')" }
           if ($oldName) { throw 'Old WebP-Maker.exe name was not removed.' }
           Write-Host 'PASS: Windows app downloaded, installed and restarted into the update, then cleaned up.'
+      - name: Build one-click Setup for old copies
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path setup-out -Force | Out-Null
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/make-windows-setup.ps1 -AppDir 'dist/Juicy Chat Creator Tools-win32-x64' -OutDir setup-out
+          Get-ChildItem setup-out | ForEach-Object { Write-Host $_.Name }
+      - name: TEST Setup updates a real old v1.0.3 copy (REQUIRED)
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'setup-test'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          $zip = Join-Path $root 'old.zip'
+          Invoke-WebRequest 'https://github.com/crowdragontree/webp-maker/releases/download/v1.0.3/WebP-Maker-Windows-x64.zip' -OutFile $zip
+          $install = Join-Path $root 'WebP-Maker'
+          Expand-Archive -LiteralPath $zip -DestinationPath $install
+          if (!(Test-Path (Join-Path $install 'WebP-Maker.exe'))) { throw 'Old copy did not lay down WebP-Maker.exe' }
+          pwsh -NoProfile -ExecutionPolicy Bypass -File setup-out/JuicyChat-Creator-Tool-Setup.ps1 "--target=$install" --no-launch
+          Start-Sleep -Seconds 3
+          Get-Process -Name 'JuicyChat Creator Tool' -ErrorAction SilentlyContinue | Stop-Process -Force
+          $pkg = Get-Content (Join-Path $install 'resources/app/package.json') -Raw
+          if ($pkg -notmatch '"version": "1.1.1"') { throw 'Setup did not install v1.1.1.' }
+          if (!(Test-Path (Join-Path $install 'JuicyChat Creator Tool.exe'))) { throw 'New program name missing after Setup.' }
+          if (Test-Path (Join-Path $install 'WebP-Maker.exe')) { throw 'Old WebP-Maker.exe not removed by Setup.' }
+          $left = Get-ChildItem -LiteralPath $root -Force -Directory | Where-Object { $_.Name -match '^\.jcct-setup-backup-' }
+          if ($left) { throw "Setup left a backup folder: $($left.Name -join ', ')" }
+          Write-Host 'PASS: Setup turned a real v1.0.3 copy into v1.1.1 (renamed exe, old name removed, cleaned up).'
       - name: Create Windows portable ZIP
         shell: pwsh
         run: |
@@ -117,6 +143,11 @@ jobs:
         with:
           name: Juicy-Chat-Creator-Tools-Windows-x64
           path: WebP-Maker-Windows-x64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JuicyChat-Creator-Tool-Setup
+          path: setup-out/*
           if-no-files-found: error
   linux:
     name: Linux (64-bit)
