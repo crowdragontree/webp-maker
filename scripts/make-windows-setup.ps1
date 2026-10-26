@@ -16,8 +16,11 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 $work = Join-Path $env:RUNNER_TEMP ("setup-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 $payloadDir = Join-Path $work 'app'
-Copy-Item -LiteralPath $AppDir -Destination $payloadDir -Recurse
+New-Item -ItemType Directory -Path $payloadDir -Force | Out-Null
+# Copy the CONTENTS of the app folder into payloadDir (the trailing \* avoids nesting the source folder itself).
+Copy-Item -Path (Join-Path $AppDir '*') -Destination $payloadDir -Recurse -Force
 Remove-Item -LiteralPath (Join-Path $payloadDir 'WebP-Maker.exe') -Force -ErrorAction SilentlyContinue
+if (!(Test-Path (Join-Path $payloadDir $exeName))) { throw "Payload staging failed: $exeName not at payload root." }
 $zip = Join-Path $work 'payload.zip'
 Compress-Archive -Path (Join-Path $payloadDir '*') -DestinationPath $zip -Force
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($zip))
