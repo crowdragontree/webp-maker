@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..'),read=x=>fs.readFileSync(path.join(root,x),'utf8');
 for(const file of ['main.js','preload.js','lib/webpMaker.js','lib/portableUpdater.js',
-  'renderer/index.html','renderer/creator-tools.js','renderer/webpmaker.js',
+  'renderer/index.html','renderer/creator-tools.js','renderer/webpmaker.js','renderer/webpTimeline.js',
   'introduction-designer/index.html','introduction-designer/app.js','introduction-designer/layout.js',
   'introduction-designer/core.js','introduction-designer/creator-bridge.js',
   'assets/icon.png','assets/icon.ico', 'scripts/e2e-desktop.js'])

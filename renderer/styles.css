@@ -1522,3 +1522,12 @@ body:has(#view-webpmaker.active) .topbar p{margin-top:3px;font-size:12px}
 #view-webpmaker #wm-freeform-status{font-size:10.5px;color:#e4d0ed;line-height:1.4;flex:1;min-width:180px}
 #view-webpmaker #wm-freeform-reset{font-size:11px;padding:6px 10px;min-height:30px}
 @media(max-width:670px){#view-webpmaker .wm-config{grid-template-columns:1fr}}
+
+/* WebP Maker: merge settings (seconds per image, cross-fade) */
+.wm-config-info[hidden]{display:none!important}
+.wm-combine{margin-top:-6px}
+.wm-check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.wm-check input{width:16px;height:16px;accent-color:#b36bff;flex:none}
+#wm-crossfade-wrap{display:flex;flex-direction:column;gap:6px}
+#wm-crossfade-wrap[hidden]{display:none!important}
+.wm-length-note{grid-column:1/-1;color:var(--muted);font-size:12px;min-height:1em}

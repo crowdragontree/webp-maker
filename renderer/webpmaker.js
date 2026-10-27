@@ -1,14 +1,16 @@
-// WebP Maker: locally decode MP4 and WebM (including mislabeled VP9/ComfyUI files).
-// ImageMagick encodes the 9.99 MB WebP. No uploads and no FFmpeg dependency.
+// WebP Maker: locally decode MP4 and WebM (including mislabeled VP9/ComfyUI files), animated WebP files and PNG/JPG pictures, and join them
+// (optionally with a cross-fade). ImageMagick encodes the 9.99 MB WebP. No uploads and no FFmpeg dependency.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
   const api = window.juicyApp;
   const geometry=window.webpFrameGeometry;
+  const timeline=window.webpTimeline;
+  const $o=id=>document.getElementById(id);   // the merge settings: looked up softly so the panel still works if a page does not have them
   const ids=['wm-input','wm-dropzone','wm-add','wm-clear','wm-clips','wm-count','wm-size','wm-size-custom','wm-width','wm-height','wm-fps','wm-quality',
     'wm-original-size','wm-crop','wm-crop-position','wm-output-dimensions','wm-crop-preview-wrap','wm-crop-preview','wm-crop-preview-clip','wm-freeform-tools','wm-freeform-status','wm-freeform-reset','wm-convert','wm-cancel','wm-progress-wrap','wm-progress-title','wm-progress-pct','wm-progress-bar','wm-progress-detail',
     'wm-error','wm-result','wm-preview','wm-preview-placeholder','wm-result-size','wm-size-bar','wm-result-details','wm-result-note','wm-save','wm-expand','wm-fullscreen','wm-fullscreen-image','wm-fullscreen-close'];
-  if(!ids.every(id=>$(id))||!api?.webpBegin||!api?.webpFrame||!api?.webpFinish||!geometry)return;
+  if(!ids.every(id=>$(id))||!api?.webpBegin||!api?.webpFrame||!api?.webpFinish||!geometry||!timeline)return;
   const MAX_FRAMES=1500;
   const MAX_BYTES=9990000;
   let clips=[];
@@ -20,6 +22,13 @@
   let cancelled=false;
   let adding=false;
   let cropPointerDrag=null;
+  // What can be added: videos, animated WebP files, and PNG/JPG pictures (a still WebP counts as a picture).
+  const kindOf=name=>/\.(mp4|webm)$/i.test(name)?'video':/\.webp$/i.test(name)?'webp':/\.(png|jpe?g)$/i.test(name)?'image':'';
+  const imageSeconds=()=>{const v=Number($o('wm-image-seconds')?.value);return Number.isFinite(v)?v:2;};
+  const crossfadeOn=()=>!!$o('wm-crossfade-on')?.checked;
+  const crossfadeSeconds=()=>crossfadeOn()?Number($o('wm-crossfade-seconds')?.value):0;
+  // how long a clip is on screen: a video or an animated WebP for its own length, a picture for "Seconds per image"
+  const clipSeconds=clip=>clip.kind==='image'?imageSeconds():clip.duration;
   const formatBytes=b=>b>=1e6?(b/1e6).toFixed(2)+' MB':(b/1e3).toFixed(0)+' KB';
   const webpNav=document.querySelector('.nav-btn[data-view="webpmaker"]');
   function navStatus(mode){
@@ -72,6 +81,7 @@
     $('wm-clear').disabled=isBusy;
     $('wm-add').disabled=isBusy;
     for(const id of ['wm-size','wm-width','wm-height','wm-crop','wm-crop-position','wm-crop-preview-clip','wm-freeform-reset','wm-fps','wm-quality'])$(id).disabled=isBusy;
+    for(const id of ['wm-image-seconds','wm-crossfade-on','wm-crossfade-seconds']){const e=$o(id);if(e)e.disabled=isBusy;}
     $('wm-dropzone').setAttribute('aria-disabled',String(isBusy));
   }
   function progress(data){
@@ -84,10 +94,10 @@
     $('wm-progress-bar').style.width=p+'%';
   }
   api.onWebpProgress(progress);
-  function untrack(clip){try{clip.video.pause();clip.video.removeAttribute('src');clip.video.load();}catch{}try{URL.revokeObjectURL(clip.url);}catch{}}
+  function untrack(clip){try{clip.decoder?.close();}catch{}try{if(clip.kind==='video'){clip.video.pause();clip.video.removeAttribute('src');clip.video.load();}}catch{}try{if(clip.url)URL.revokeObjectURL(clip.url);}catch{}}
   function resetSize(){
     const c=clips[0];
-    $('wm-original-size').textContent=c?`${c.width} × ${c.height} px (first video)`:'Add videos to see original dimensions';
+    $('wm-original-size').textContent=c?`${c.width} × ${c.height} px (first clip)`:'Add files to see original dimensions';
     const opt=$('wm-size').querySelector('option[value="original"]');
     if(opt)opt.textContent=c?`Original (${c.width} × ${c.height})`:'Original dimensions (no resizing)';
     const select=$('wm-crop-preview-clip');
@@ -101,7 +111,7 @@
     updateSizeUI();
   }
   function dimensions(){
-    if(!clips.length)throw new Error('Add video clips first.');
+    if(!clips.length)throw new Error('Add clips first.');
     return geometry.outputSize(clips[0],$('wm-size').value,$('wm-width').value,$('wm-height').value,$('wm-crop').value);
   }
   function previewClip(){return clips.find(c=>String(c.instanceId)===$('wm-crop-preview-clip').value)||clips[0]||null;}
@@ -218,10 +228,10 @@
         $('wm-height').value=clips[0].height;
       }
     }
-    if(!clips.length){$('wm-output-dimensions').textContent='Choose videos to see output size';return;}
+    if(!clips.length){$('wm-output-dimensions').textContent='Choose files to see output size';return;}
     try{
       const {width,height}=dimensions();
-      $('wm-output-dimensions').textContent=`Output ${width} × ${height} px · ${crop==='fit'?'Full video fitted':crop==='freeform'?'Freeform crop per clip':'Cropped to fill'}`;
+      $('wm-output-dimensions').textContent=`Output ${width} × ${height} px · ${crop==='fit'?'Whole picture fitted':crop==='freeform'?'Freeform crop per clip':'Cropped to fill'}`;
     }catch{$('wm-output-dimensions').textContent='Enter a valid output width and height';}
     drawCropPreview();
   }
@@ -231,11 +241,14 @@
     const n=document.createElement('span');n.className='wm-clip-num';n.textContent=String(i+1).padStart(2,'0');
     const description=document.createElement('div');description.className='wm-clip-copy';
     const name=document.createElement('strong');name.textContent=clip.name;
-    const details=document.createElement('small');details.textContent=`${clip.width} × ${clip.height} · ${clip.duration.toFixed(2)}s · ${formatBytes(clip.bytes)}${clip.container==='webm'?' · VP9/WebM':''}`;
+    const details=document.createElement('small');
+    details.textContent=clip.kind==='image'?`${clip.width} × ${clip.height} · picture, shown ${imageSeconds()}s · ${formatBytes(clip.bytes)}`
+      :clip.kind==='webp'?`${clip.width} × ${clip.height} · ${clip.duration.toFixed(2)}s · ${clip.frames.length} frames · WebP · ${formatBytes(clip.bytes)}`
+      :`${clip.width} × ${clip.height} · ${clip.duration.toFixed(2)}s · ${formatBytes(clip.bytes)}${clip.container==='webm'?' · VP9/WebM':''}`;
     description.append(name,details);
     const controls=document.createElement('div');controls.className='wm-clip-buttons';
     for(const [glyph,label,disabled,callback] of [
-      ['↑','Move up',i===0,()=>move(i,i-1)],['↓','Move down',i===clips.length-1,()=>move(i,i+1)],['×','Remove video',false,()=>removeClip(i)]]) {
+      ['↑','Move up',i===0,()=>move(i,i-1)],['↓','Move down',i===clips.length-1,()=>move(i,i+1)],['×','Remove clip',false,()=>removeClip(i)]]) {
       const b=document.createElement('button');b.className='ghost';b.type='button';b.textContent=glyph;b.title=label;
       b.setAttribute('aria-label',`${label}: ${clip.name}`);b.disabled=disabled||converting;b.addEventListener('click',callback);controls.append(b);
     }
@@ -250,10 +263,23 @@
   function render(){
     $('wm-count').textContent=`(${clips.length})`;
     $('wm-clips').replaceChildren();
-    if(!clips.length){const p=document.createElement('div');p.className='wm-empty';p.textContent='Add one video to convert it, or more to merge them.';$('wm-clips').append(p);}
+    if(!clips.length){const p=document.createElement('div');p.className='wm-empty';p.textContent='Add one clip to convert it, or more to merge them. Videos, animated WebP files and PNG/JPG pictures can be mixed.';$('wm-clips').append(p);}
     else clips.forEach((c,i)=>$('wm-clips').append(row(c,i)));
     $('wm-convert').disabled=converting||clips.length===0;
-    resetSize();
+    resetSize();updateCombineUI();
+  }
+  // The merge settings: "Seconds per image" appears only while the list has a picture; the cross-fade length only while Cross-fade is ticked.
+  function updateCombineUI(){
+    const w=$o('wm-image-seconds-wrap');if(w)w.hidden=!clips.some(c=>c.kind==='image');
+    const on=crossfadeOn();
+    const len=$o('wm-crossfade-wrap');if(len)len.hidden=!on;
+    const hint=$o('wm-crossfade-hint');if(hint)hint.textContent=on&&clips.length<=1?'Add a second clip to use the cross-fade.':`Shortest allowed: ${timeline.MIN_CROSSFADE} seconds.`;
+    const note=$o('wm-length-note');
+    if(note){
+      const x=on&&clips.length>1&&crossfadeSeconds()>0?crossfadeSeconds():0;
+      const total=clips.reduce((a,c)=>a+clipSeconds(c),0)-x*Math.max(0,clips.length-1);
+      note.textContent=clips.length&&total>0?`Total length about ${total.toFixed(1)} s${x?` (each cross-fade overlaps ${x} s)`:''}.`:'';
+    }
   }
   function removeClip(i){if(converting)return;const [c]=clips.splice(i,1);untrack(c);clearError();clearResult();render();}
   function move(from,to){if(converting||from===to||from<0||to<0||to>=clips.length)return;const [c]=clips.splice(from,1);clips.splice(to,0,c);clearResult();render();}
@@ -296,7 +322,7 @@
         const seconds=duration();
         if(!width||!height||!Number.isFinite(seconds)||seconds<=0)return;
         done=true;cleanup();
-        resolve({file,url,video,name:file.name,bytes:file.size,width,height,duration:seconds,container,
+        resolve({kind:'video',file,url,video,name:file.name,bytes:file.size,width,height,duration:seconds,container,
           key:[file.name,file.size,file.lastModified].join('|'),instanceId:++clipInstanceSerial,freeformSelection:null});
       }
       for(const event of ['loadedmetadata','loadeddata','durationchange','canplay','seeked'])video.addEventListener(event,check);
@@ -322,18 +348,52 @@
       })().catch(e=>fail(`Could not inspect ${file.name}: ${e.message||e}`));
     });
   }
+  // A picture (PNG, JPG or a still WebP) is drawn once onto a canvas; the canvas stands in for the video wherever the app draws a clip.
+  function stillCanvas(source,w,h,limit){
+    const scale=limit?Math.min(1,4096/Math.max(w,h)):1;
+    const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*scale));c.height=Math.max(1,Math.round(h*scale));
+    const x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(source,0,0,c.width,c.height);
+    c.readyState=4;   // the crop preview waits for a video's readyState; a finished picture is always ready
+    return c;
+  }
+  const makeClip=(file,kind,canvas,extra)=>Object.assign({kind,file,url:null,video:canvas,name:file.name,bytes:file.size,width:canvas.width,height:canvas.height,container:kind,
+    key:[file.name,file.size,file.lastModified].join('|'),instanceId:++clipInstanceSerial,freeformSelection:null},extra);
+  async function loadImageClip(file){
+    if(!file.size)throw new Error(`${file.name} is empty.`);
+    let bitmap;
+    try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}
+    catch{throw new Error(`Could not read ${file.name}. Choose a standard PNG, JPG or WebP picture.`);}
+    try{return makeClip(file,'image',stillCanvas(bitmap,bitmap.width,bitmap.height,true),{duration:0});}finally{bitmap.close();}
+  }
+  async function loadWebpClip(file){
+    if(!file.size)throw new Error(`${file.name} is empty.`);
+    const buffer=await file.arrayBuffer();
+    let info;
+    try{info=timeline.parseWebp(buffer);}catch{throw new Error(`${file.name} is not a valid WebP file.`);}
+    if(!info.animated)return loadImageClip(file);   // a still WebP is a picture, like a PNG
+    if(typeof ImageDecoder==='undefined')throw new Error('This version of the app cannot read animated WebP files.');
+    let decoder=null;
+    try{
+      decoder=new ImageDecoder({data:buffer,type:'image/webp'});
+      await decoder.tracks.ready;
+      const first=await decoder.decode({frameIndex:0});
+      try{return makeClip(file,'webp',stillCanvas(first.image,first.image.displayWidth,first.image.displayHeight,false),{decoder,frames:info.frames,starts:info.starts,duration:info.duration});}
+      finally{try{first.image.close();}catch{}}
+    }catch(e){try{decoder?.close();}catch{}throw new Error(`Could not read ${file.name}: ${e.message||e}`);}
+  }
   async function addFiles(files){
     if(converting||adding||!files.length)return;
     adding=true;clearError();
     try{
       const picked=Array.from(files);
-      if(picked.some(f=>!/\.(mp4|webm)$/i.test(f.name)))throw new Error('Choose MP4 or WebM video files.');
-      if(clips.length+picked.length>30)throw new Error('Choose up to 30 video clips.');
+      if(picked.some(f=>!kindOf(f.name)))throw new Error('Choose MP4, WebM, WebP, PNG or JPG files.');
+      if(clips.length+picked.length>30)throw new Error('Choose up to 30 clips.');
       const known=new Set(clips.map(f=>f.key));
       for(const file of picked){
         const key=[file.name,file.size,file.lastModified].join('|');
         if(known.has(key))continue;
-        const clip=await loadMetadata(file);
+        const kind=kindOf(file.name);
+        const clip=kind==='video'?await loadMetadata(file):kind==='webp'?await loadWebpClip(file):await loadImageClip(file);
         clips.push(clip);known.add(key);
       }
       if(clips.length){clearResult();render();}
@@ -388,20 +448,46 @@
     });
   }
   function png(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not render a PNG frame.')),'image/png'));}
-  async function capture(clip,count,settings,canvas,ctx,frameOffset,total){
-    const v=clip.video;const {width,height,fps}=settings;
-    const r=geometry.rect(clip.width,clip.height,width,height,settings.crop,settings.position,settings.selection);
-    for(let i=0;i<count;i++){
+  // One picture of a clip at `t` seconds into it: a video is sought to that moment, an animated WebP is decoded at that frame, a picture is just itself.
+  async function sourceAt(clip,t){
+    if(clip.kind==='webp'){
+      const i=Math.min(clip.frames.length-1,timeline.frameIndexAt(clip.starts,t));
+      const r=await clip.decoder.decode({frameIndex:i});
+      return {img:r.image,done(){try{r.image.close();}catch{}}};
+    }
+    if(clip.kind==='video')await seek(clip.video,t);
+    return {img:clip.video,done(){}};
+  }
+  // Draw that picture onto a black canvas, cropped or fitted the same way for every kind of clip.
+  async function drawClip(clip,t,ctx,settings){
+    const {width,height}=settings;
+    const r=geometry.rect(clip.width,clip.height,width,height,settings.crop,settings.position,clip.freeformSelection);
+    const src=await sourceAt(clip,t);
+    try{ctx.fillStyle='#000000';ctx.fillRect(0,0,width,height);ctx.drawImage(src.img,r.sx,r.sy,r.sw,r.sh,r.dx,r.dy,r.dw,r.dh);}finally{src.done();}
+  }
+  // Every planned frame in order. A cross-fade frame is the outgoing clip with the incoming clip drawn over it at its blend weight, each on its own black
+  // background, so a clip that does not fill the frame fades out to black instead of staying put.
+  async function capture(framePlan,settings,canvas,ctx){
+    const {width,height}=settings,total=framePlan.frames.length;
+    let canvas2=null,ctx2=null;
+    if(framePlan.frames.some(f=>f.blend)){
+      canvas2=document.createElement('canvas');canvas2.width=width;canvas2.height=height;
+      ctx2=canvas2.getContext('2d',{alpha:false});if(!ctx2)throw new Error('Unable to initialize the local video canvas.');
+      ctx2.imageSmoothingEnabled=true;ctx2.imageSmoothingQuality='high';
+    }
+    for(let k=0;k<total;k++){
       if(cancelled)throw new Error('Conversion cancelled.');
-      const time=Math.min(Math.max(0,clip.duration-0.002), (i+.5)/fps);
-      await seek(v,time);
+      const f=framePlan.frames[k];
+      if(f.blend){
+        await drawClip(clips[f.blend.clip],f.blend.t,ctx,settings);
+        await drawClip(clips[f.clip],f.t,ctx2,settings);
+        ctx.globalAlpha=f.blend.alpha;ctx.drawImage(canvas2,0,0);ctx.globalAlpha=1;
+      }else await drawClip(clips[f.clip],f.t,ctx,settings);
       if(cancelled)throw new Error('Conversion cancelled.');
-      ctx.fillStyle='#000000';ctx.fillRect(0,0,width,height);
-      ctx.drawImage(v,r.sx,r.sy,r.sw,r.sh,r.dx,r.dy,r.dw,r.dh);
       const data=await (await png(canvas)).arrayBuffer();
       await api.webpFrame(data);
-      const complete=frameOffset+i+1;
-      if(complete%5===0||complete===total)progress({title:'Decoding video clips',detail:`${complete} of ${total} frames captured at ${width} × ${height}.`,percent:5+Math.floor(49*complete/total)});
+      const complete=k+1;
+      if(complete%5===0||complete===total)progress({title:'Preparing frames',detail:`${complete} of ${total} frames captured at ${width} × ${height}.`,percent:5+Math.floor(49*complete/total)});
     }
   }
   async function convert(){
@@ -418,13 +504,23 @@
       if((width!==original.width||height!==original.height)&&!window.confirm(`Change output dimensions from ${original.width} × ${original.height} to ${width} × ${height}?\n\nWebP Maker will never change them automatically.`))return;
       const mismatched=clips.filter(c=>c.width!==width||c.height!==height);
       if(crop==='fit'&&mismatched.length&&width===original.width&&height===original.height&&
-        !window.confirm('Some MP4 clips have different dimensions. They will be fitted into the first video\'s frame without stretching or cropping. Continue?'))return;
-      const counts=clips.map(c=>Math.max(1,Math.round(c.duration*fps)));
-      const expectedFrames=counts.reduce((a,b)=>a+b,0);
+        !window.confirm('Some clips have different dimensions. They will be fitted into the first video\'s frame without stretching or cropping. Continue?'))return;
+      if(clips.some(c=>c.kind==='image')&&!(imageSeconds()>=0.25&&imageSeconds()<=60))throw new Error('Seconds per image must be from 0.25 to 60.');
+      const fade=crossfadeSeconds();
+      if(crossfadeOn()&&clips.length>1&&!(fade>=timeline.MIN_CROSSFADE))throw new Error(`The cross-fade must be at least ${timeline.MIN_CROSSFADE} seconds.`);
+      let framePlan;
+      try{framePlan=timeline.plan({durations:clips.map(clipSeconds),fps,crossfade:clips.length>1&&fade>0?fade:0});}
+      catch(e){
+        if(e.clipIndex===undefined)throw e;
+        const c=clips[e.clipIndex];
+        throw new Error(`"${c.name}" is only ${e.have.toFixed(2)} seconds long, but a ${fade} second cross-fade needs ${e.need.toFixed(2)} seconds here (a clip in the middle of the list is faded at both ends, the first and last clip at one end). Use a shorter cross-fade${c.kind==='image'?', raise Seconds per image':''} or a longer clip.`);
+      }
+      const counts=framePlan.counts;
+      const expectedFrames=framePlan.frames.length;
       if(expectedFrames>MAX_FRAMES)throw new Error(`That frame rate would create ${expectedFrames} frames. Choose a lower FPS (${MAX_FRAMES} maximum) or use shorter clips.`);
       if(width>4096||height>4096)throw new Error('Output dimensions must be 4096 pixels or smaller on each side.');
       cancelled=false;busy(true);navStatus('running');$('wm-progress-wrap').hidden=false;
-      progress({title:'Starting conversion',detail:'Decoding local video inside Electron. No FFmpeg and no uploads.',percent:0});
+      progress({title:'Starting conversion',detail:'Reading your clips on this computer. No FFmpeg and no uploads.',percent:0});
       // Source IDs include the clip order. Cached frames are never reused for
       // different videos, a different order, or a different output size.
       const cropModes=['fit','16:9','9:16','3:4','4:3','1:1','fill','freeform'];
@@ -434,7 +530,8 @@
         return [region.cx,region.cy,region.scale].map(x=>String(Math.round(x*1000000)));
       }):[];
       // Numeric IDs only: the backend uses numeric validation for frame keys.
-      const sourceKey=[...clips.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections].join(',');
+      // the cross-fade and the seconds per picture change the frames, so they are part of the key (whole milliseconds: the backend wants numbers only)
+      const sourceKey=[...clips.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections,Math.round(framePlan.crossfade*1000),clips.some(c=>c.kind==='image')?Math.round(imageSeconds()*1000):0].join(',');
       const prepared=await api.webpBegin({width,height,fps,quality,expectedFrames,clipFrames:counts,sourceKey});
       if(prepared.cached){
         progress({title:'Reusing decoded video frames',detail:`${prepared.cachedFrames} lossless frames already captured at ${prepared.sourceFps} FPS. No new video decoding.`,percent:54});
@@ -443,12 +540,7 @@
         const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
         if(!ctx)throw new Error('Unable to initialize the local video canvas.');
         ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-        let offset=0;
-        for(let i=0;i<clips.length;i++){
-          progress({title:'Decoding video clips',detail:`Clip ${i+1} of ${clips.length}: ${clips[i].name}`,percent:5+Math.floor(49*offset/expectedFrames)});
-          await capture(clips[i],counts[i],{width,height,fps,crop,position,selection:clips[i].freeformSelection},canvas,ctx,offset,expectedFrames);
-          offset+=counts[i];
-        }
+        await capture(framePlan,{width,height,crop,position},canvas,ctx);
       }
       if(cancelled)return;
       const result=await api.webpFinish();
@@ -525,9 +617,11 @@
   window.addEventListener('blur',closeSaveMenu);
   async function save(){
     if(!ready||converting)return;
-    const name=(clips[0]?.name||'animation').replace(/\.(mp4|webm)$/i,'').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)+'_Animated.webp';
+    const name=(clips[0]?.name||'animation').replace(/\.(mp4|webm|webp|png|jpe?g)$/i,'').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)+'_Animated.webp';
     try{const r=await api.webpSave(name,overShown);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
   }
+  for(const id of ['wm-image-seconds','wm-crossfade-seconds'])$o(id)?.addEventListener('input',()=>{clearResult();render();});
+  $o('wm-crossfade-on')?.addEventListener('change',()=>{clearResult();render();});
   $('wm-add').addEventListener('click',selectFiles);
   $('wm-dropzone').addEventListener('click',selectFiles);
   $('wm-dropzone').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectFiles();}});

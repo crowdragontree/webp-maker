@@ -29,15 +29,15 @@
 <div class="wm-layout">
 <div class="panel wm-main-panel">
 <div class="wm-compact-toolbar">
-<div class="wm-compact-title"><strong>Video clips <span class="wm-count" id="wm-count">(0)</span></strong><span>Drag clips to change their order</span></div>
-<div class="wm-toolbar-buttons"><button class="secondary" id="wm-add" type="button">+ Add videos</button><button class="ghost" id="wm-clear" type="button">Clear all</button></div>
+<div class="wm-compact-title"><strong>Clips <span class="wm-count" id="wm-count">(0)</span></strong><span>Drag clips to change their order</span></div>
+<div class="wm-toolbar-buttons"><button class="secondary" id="wm-add" type="button">+ Add files</button><button class="ghost" id="wm-clear" type="button">Clear all</button></div>
 </div>
-<input accept=".mp4,.webm,video/mp4,video/webm" hidden="" id="wm-input" multiple="" type="file"/>
-<div aria-label="Add MP4 or WebM videos by browsing or dropping files here" class="wm-dropzone" id="wm-dropzone" role="button" tabindex="0">
+<input accept=".mp4,.webm,.webp,.png,.jpg,.jpeg,video/mp4,video/webm,image/webp,image/png,image/jpeg" hidden="" id="wm-input" multiple="" type="file"/>
+<div aria-label="Add videos, WebP files or pictures by browsing or dropping files here" class="wm-dropzone" id="wm-dropzone" role="button" tabindex="0">
 <span aria-hidden="true" class="wm-drop-icon">⇧</span>
-<span class="wm-drop-copy"><strong>Drop MP4 or WebM files here</strong><small>or click to choose one or more videos</small></span>
+<span class="wm-drop-copy"><strong>Drop videos, WebP files or pictures here</strong><small>MP4, WebM, WebP, PNG or JPG: click to choose one or more files</small></span>
 </div>
-<div aria-live="polite" class="wm-clips" id="wm-clips"><div class="wm-empty">Add one video to convert, or more to merge.</div></div>
+<div aria-live="polite" class="wm-clips" id="wm-clips"><div class="wm-empty">Add one clip to convert, or more to merge. Videos, animated WebP files and PNG/JPG pictures can be mixed.</div></div>
 <div class="wm-settings-head"><strong>Output settings</strong><span>Animated WebP · 9.99 MB max · infinite loop · no audio</span></div>
 <div class="wm-config">
 <label class="wm-config-info">
@@ -59,7 +59,7 @@
 <label class="wm-config-info">
 <span class="wm-field-head"><b>Crop / aspect ratio</b><small>Applies to all clips</small></span>
 <select aria-label="Crop the videos to an aspect ratio" id="wm-crop">
-<option selected="" value="fit">Fit whole video (no crop)</option>
+<option selected="" value="fit">Fit whole clip (no crop)</option>
 <option value="16:9">Crop to 16:9 (landscape)</option>
 <option value="9:16">Crop to 9:16 (portrait)</option>
 <option value="3:4">Crop to 3:4 (portrait)</option>
@@ -75,7 +75,7 @@
 <option value="left">Crop position: Left</option>
 <option value="right">Crop position: Right</option>
 </select>
-<small class="wm-output-dimensions" id="wm-output-dimensions">Add videos to see output size</small>
+<small class="wm-output-dimensions" id="wm-output-dimensions">Add files to see output size</small>
 </label>
 <label class="wm-config-info"><span class="wm-field-head"><b>Frame rate</b><small>FPS</small></span>
 <input aria-label="Frame rate in FPS" id="wm-fps" max="60" min="19" step="1" type="number" value="24"/>
@@ -83,6 +83,22 @@
 <label class="wm-config-info"><span class="wm-field-head"><b>Quality</b><small>50–99</small></span>
 <input aria-label="ImageMagick WebP quality" id="wm-quality" max="99" min="50" step="1" type="number" value="80"/>
 </label>
+</div>
+<div class="wm-config wm-combine" id="wm-combine">
+  <label class="wm-config-info" id="wm-image-seconds-wrap" hidden>
+    <span class="wm-field-head"><b>Seconds per image</b><small>PNG / JPG pictures</small></span>
+    <input id="wm-image-seconds" type="number" min="0.25" max="60" step="0.25" value="2" aria-label="How many seconds each image stays on screen">
+    <small>Every picture in the list stays on screen for this long.</small>
+  </label>
+  <div class="wm-config-info wm-crossfade">
+    <label class="wm-check"><input id="wm-crossfade-on" type="checkbox"><b>Cross-fade between clips</b></label>
+    <span id="wm-crossfade-wrap" hidden>
+      <span class="wm-field-head"><b>Cross-fade length</b><small>seconds</small></span>
+      <input id="wm-crossfade-seconds" type="number" min="0.25" max="10" step="0.05" value="0.5" aria-label="Cross-fade length in seconds, at least 0.25">
+    </span>
+    <small id="wm-crossfade-hint">Shortest allowed: 0.25 seconds.</small>
+  </div>
+  <small id="wm-length-note" class="wm-length-note"></small>
 </div>
 <details class="wm-crop-preview-wrap" hidden="" id="wm-crop-preview-wrap">
 <summary>Preview and adjust the crop before converting</summary>
@@ -143,6 +159,7 @@
   <script src="webmProbe.js"></script>
   <script src="mp4Probe.js"></script>
   <script src="creator-tools.js"></script>
+  <script src="webpTimeline.js"></script>
   <script src="webpmaker.js"></script>
 </body>
 </html>

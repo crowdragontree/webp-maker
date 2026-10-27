@@ -1,8 +1,13 @@
-# JuicyChat Creator Tool v1.1.2
+# JuicyChat Creator Tool v1.2.0
 
 ## New Features
 
-### Introduction Designer: simpler and faster to use
+### WebP Maker: merge WebP files, pictures and cross-fade
+- **Merge animated WebP files.** Add two (or more) WebP files and merge them into one, or mix them with MP4 and WebM videos in any order.
+- **Turn pictures into a WebP.** Add PNG or JPG pictures and they become frames of one animated WebP. When there is a picture in the list, a **Seconds per image** setting appears, so you choose how long each picture stays on screen (default 2 seconds). A WebP that is not animated counts as a picture.
+- **Cross-fade between clips.** Tick **Cross-fade between clips** and a **Cross-fade length** setting appears; the shortest allowed is **0.25 seconds**. The clips overlap during the fade, so the total length is shorter by the overlaps, and the panel shows the total. A clip that is too short for the fade is named in the message.
+
+### Introduction Designer: simpler and faster to use (new since 1.1.1)
 - **Simple mode** is now the default and shows only the everyday controls. The **Advanced** switch in the top bar brings back everything: Paste HTML, free placement, layered borders and per-item CSS. Your choice is remembered, and nothing in your design is deleted when you switch.
 - **Pick a look**: 9 ready-made styles (Void Violet, Royal Violet, Midnight Blue, Crimson Noir, Forest Glow, Rose Gold, Neon Night, Old Parchment and Clean Light). Your text stays, and **Ctrl+Z** undoes it.
 - **Character meter** under the counter: amber near 12,000 characters and red over JuicyChat's 15,000 limit. The styling code counts too, not just your words.
@@ -19,7 +24,7 @@
 ## Compatibility
 - Windows 64-bit and Linux 64-bit
 - Your saved designs and templates keep working. Stacked designs stay stacked, and free-placement designs stay free.
-- WebP Maker, single MP4 conversion, cropping, custom dimensions, quality optimization, VP9/WebM support and self-installing updates unchanged.
+- Single MP4 conversion, cropping, custom dimensions, quality optimization, VP9/WebM support and self-installing updates work as before. Merging re-encodes the clips, so quality is set again by the Quality setting, and the 9.99 MB limit still applies.
 - All video processing stays local. No uploads.
 
 ## Updating
@@ -27,16 +32,3 @@ From v1.1.1 on, **Check for updates → Update & Restart** installs this version
 
 ## Questions or Problems?
 HMU on PG's server.
-
----
-
-# Juicy Chat Creator Tools v1.1.0
-
-This repaired source keeps the app's existing version number.
-
-- WebP Maker now supports one MP4/WebM for animated conversion and 2+ videos for merging.
-- Introduction Designer now fits the canvas to the actual content height, offers a Fit content button, and uses simplified labels.
-- Older saved canvases that were stuck at a manual height are reset once.
-- Image crop, Undo/Redo, HTML editing, inline styles and existing updater are preserved.
-
-Desktop executables must be rebuilt on the relevant platform.

@@ -7,7 +7,7 @@ const html=fs.readFileSync(path.join(__dirname,'../renderer/index.html'),'utf8')
 assert(!renderer.includes('clips.length<2'),'Convert must be enabled with one clip');
 assert(renderer.includes('clips.length===0'),'Zero clips must still block conversion');
 assert(!html.includes('Add at least two videos'),'Prompt must allow a single video');
-assert(html.includes('Add one video to convert'),'UI must explain single-video support');
+assert(html.includes('Add one clip to convert'),'UI must explain single-clip support');
 const WebpMaker=require('../lib/webpMaker');
 const klass=WebpMaker.WebpMaker||WebpMaker;
 assert(typeof klass==='function'||typeof WebpMaker==='function','Backend encoder must load');
