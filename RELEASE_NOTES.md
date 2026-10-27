@@ -4,7 +4,7 @@
 
 ### Introduction Designer: simpler and faster to use
 - **Simple mode** is now the default and shows only the everyday controls. The **Advanced** switch in the top bar brings back everything: Paste HTML, free placement, layered borders and per-item CSS. Your choice is remembered, and nothing in your design is deleted when you switch.
-- **Pick a look**: 8 ready-made styles (Royal Violet, Midnight Blue, Crimson Noir, Forest Glow, Rose Gold, Neon Night, Old Parchment and Clean Light). Your text stays, and **Ctrl+Z** undoes it.
+- **Pick a look**: 9 ready-made styles (Void Violet, Royal Violet, Midnight Blue, Crimson Noir, Forest Glow, Rose Gold, Neon Night, Old Parchment and Clean Light). Your text stays, and **Ctrl+Z** undoes it.
 - **Character meter** under the counter: amber near 12,000 characters and red over JuicyChat's 15,000 limit. The styling code counts too, not just your words.
 - **Removed-code warning**: a note lists the CSS styles or HTML tags that JuicyChat's rules removed, both when you paste HTML and when you edit an item's CSS.
 - **Quick-start tips**: a 3-step strip on your first visit. The **?** button brings it back.
