@@ -10,6 +10,7 @@
 - **Quick-start tips**: a 3-step strip on your first visit. The **?** button brings it back.
 
 ## Changes
+- **WebP Maker: a file that is too big now says how big.** The error reads, for example, "The WebP still exceeds 9.99 MB: the file is 10.10 MB at 20 FPS and quality 60, 0.11 MB over the limit." The too-big file is no longer deleted: it is kept and shown in the preview, so you can look at it and save it. **Right-click the preview > Save image as** now works on every finished WebP (the Save button is unchanged).
 - New designs start in the **Stack** layout, so items line up without dragging. Free placement is still available and is labeled "advanced".
 - Plain labels, for example **Card width**, **Space inside the card**, **Rounded corners**, **Second background color** and **Blend direction**.
 - The preview is **748 px** wide, like JuicyChat's own. 480 px and 360 px (phone) are still available.

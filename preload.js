@@ -5,8 +5,8 @@ contextBridge.exposeInMainWorld('juicyApp',{
   webpFrame:buffer=>ipcRenderer.invoke('webpmaker:frame',buffer),
   webpFinish:()=>ipcRenderer.invoke('webpmaker:finish'),
   webpCancel:()=>ipcRenderer.invoke('webpmaker:cancel'),
-  webpPreview:()=>ipcRenderer.invoke('webpmaker:preview'),
-  webpSave:filename=>ipcRenderer.invoke('webpmaker:save',filename),
+  webpPreview:allowOver=>ipcRenderer.invoke('webpmaker:preview',allowOver),
+  webpSave:(filename,allowOver)=>ipcRenderer.invoke('webpmaker:save',filename,allowOver),
   webpNotify:status=>ipcRenderer.invoke('webpmaker:notify',status),
   onWebpProgress:fn=>ipcRenderer.on('webpmaker:progress',(_event,x)=>fn(x)),
   onWebpOpen:fn=>ipcRenderer.on('webpmaker:open',fn)

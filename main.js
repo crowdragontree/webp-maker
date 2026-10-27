@@ -100,12 +100,12 @@ app.whenReady().then(async()=>{
   for(const [name,method] of Object.entries({begin:'begin',frame:'frame',finish:'finish',cancel:'cancel',preview:'preview'})){
     ipcMain.handle('webpmaker:'+name,(event,...args)=>{verifySender(event);return maker[method](...args);});
   }
-  ipcMain.handle('webpmaker:save',async(event,suggested)=>{
+  ipcMain.handle('webpmaker:save',async(event,suggested,allowOver)=>{
     verifySender(event);
-    if(!maker.resultPath())throw Error('Convert a WebP before saving.');
+    if(!maker.resultPath(!!allowOver))throw Error('Convert a WebP before saving.');
     const safeName=String(suggested||'Animation.webp').replace(/[\\/:*?"<>|]/g,'_').replace(/\.webp$/i,'')+'.webp';
     const saved=await dialog.showSaveDialog(win,{title:'Save animated WebP',defaultPath:safeName,filters:[{name:'Animated WebP',extensions:['webp']}]});
-    return saved.canceled||!saved.filePath?{canceled:true}:maker.save(saved.filePath);
+    return saved.canceled||!saved.filePath?{canceled:true}:maker.save(saved.filePath,!!allowOver);
   });
   ipcMain.handle('webpmaker:notify',(event,status)=>{
     verifySender(event);if(status!=='complete'&&status!=='failed')return false;

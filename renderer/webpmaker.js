@@ -15,6 +15,7 @@
   let clipInstanceSerial=0;
   let converting=false;
   let ready=false;
+  let overShown=false;   // the preview shows a file that is over the size limit (kept after a failed conversion)
   let dragIndex=-1;
   let cancelled=false;
   let adding=false;
@@ -62,7 +63,7 @@
 
   const error=m=>{$('wm-error').hidden=false;$('wm-error').textContent=String(m?.message||m||'Conversion failed.');};
   const clearError=()=>{$('wm-error').hidden=true;$('wm-error').textContent='';};
-  function clearResult(){ready=false;previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');}
+  function clearResult(){ready=false;overShown=false;closeSaveMenu();previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');}
   function busy(isBusy){
     converting=!!isBusy;
     $('wm-convert').disabled=isBusy||clips.length===0;
@@ -456,6 +457,7 @@
       $('wm-preview').src=preview.data;
       $('wm-preview-placeholder').hidden=true;$('wm-result').hidden=false;$('wm-expand').disabled=false;
       $('wm-result-size').textContent=formatBytes(result.bytes);
+      overShown=false;setBadge(false);
       $('wm-size-bar').style.width=`${Math.min(100,100*result.bytes/MAX_BYTES).toFixed(2)}%`;
       const details=$('wm-result-details');details.replaceChildren();
       for(const [k,value] of [['Quality',result.sceneQualities?result.sceneQualities.map((q,i)=>`Clip ${i+1}: ${q}`).join(' · '):result.quality],['Resolution',`${result.width} × ${result.height}`],['Framing',crop==='fit'?'Fit':crop==='freeform'?'Freeform (per clip)':`Crop (${crop==='fill'?'custom':crop})`],['Frame rate',`${result.fps} FPS`],['Duration',`${result.duration}s`],['Frames',result.frames]]){
@@ -472,13 +474,59 @@
       ready=true;
       progress({title:'Conversion complete',detail:'Animated WebP ready to preview and save.',percent:100});
       navStatus('complete');notify('complete');
-    }catch(e){if(!cancelled){const message=String(e?.message||e||'');error(message.includes('still exceeds 9.99 MB')?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':e);navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}}}
+    }catch(e){if(!cancelled){const message=String(e?.message||e||'');error(message.includes('still exceeds 9.99 MB')?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':e);if(message.includes('still exceeds 9.99 MB'))await showOversize();navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}}}
     finally{if(cancelled)navStatus('idle');busy(false);render();}
   }
+  // The badge next to the size: green "Under 9.99 MB", or red "Over 9.99 MB" for the too-big file that is kept after a failed conversion.
+  function setBadge(over,bytes){
+    const b=document.getElementById('wm-result-badge');if(!b)return;
+    b.textContent=over?`Over 9.99 MB by ${((bytes-MAX_BYTES)/1e6).toFixed(2)} MB`:'Under 9.99 MB';
+    b.style.background=over?'#4a1d24':'';b.style.color=over?'#ffb3bd':'';
+  }
+  // A failed conversion keeps its closest too-big file: it is shown here (with its real size) so it can be looked at and saved with right-click > Save image as.
+  async function showOversize(){
+    try{
+      const p=await api.webpPreview(true);
+      if(!p||!p.data)return;
+      $('wm-preview').src=p.data;
+      $('wm-preview-placeholder').hidden=true;$('wm-result').hidden=false;$('wm-expand').disabled=false;
+      $('wm-result-size').textContent=formatBytes(p.bytes);
+      $('wm-size-bar').style.width='100%';
+      setBadge(true,p.bytes);
+      $('wm-result-details').replaceChildren();
+      $('wm-result-note').hidden=false;
+      $('wm-result-note').textContent=`This file is ${formatBytes(p.bytes)}, over the 9.99 MB limit. It is kept so you can look at it or save it (right-click the preview > Save image as). Lower the FPS or quality and convert again to get one under the limit.`;
+      ready=true;overShown=true;
+    }catch{}
+  }
+  // Right-click on the finished WebP: Save image as... (Electron has no context menu of its own).
+  var saveMenu=null;
+  function closeSaveMenu(){if(saveMenu){saveMenu.remove();saveMenu=null;}}
+  function openSaveMenu(e){
+    if(!ready)return;
+    e.preventDefault();closeSaveMenu();
+    const m=document.createElement('div');m.setAttribute('role','menu');
+    m.style.cssText='position:fixed;z-index:100000;min-width:190px;padding:5px;background:#1a1224;border:1px solid #5b3b78;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.55);font:13px system-ui,sans-serif';
+    const add=(label,fn)=>{
+      const b=document.createElement('button');b.type='button';b.setAttribute('role','menuitem');b.textContent=label;
+      b.style.cssText='display:block;width:100%;text-align:left;background:transparent;color:#f3e8fb;border:0;border-radius:6px;padding:8px 11px;cursor:pointer;font:inherit';
+      b.onmouseenter=b.onfocus=()=>{b.style.background='#3a2452';};b.onmouseleave=b.onblur=()=>{b.style.background='transparent';};
+      b.onclick=()=>{closeSaveMenu();fn();};m.append(b);
+    };
+    add('Save image as…',save);
+    add('View larger',()=>previewFullscreen(true));
+    document.body.append(m);saveMenu=m;
+    const x=e.clientX||e.target.getBoundingClientRect().left+10,y=e.clientY||e.target.getBoundingClientRect().top+10;
+    m.style.left=Math.max(4,Math.min(x,innerWidth-m.offsetWidth-4))+'px';m.style.top=Math.max(4,Math.min(y,innerHeight-m.offsetHeight-4))+'px';
+    m.querySelector('button').focus();
+  }
+  document.addEventListener('pointerdown',e=>{if(saveMenu&&!saveMenu.contains(e.target))closeSaveMenu();},true);
+  document.addEventListener('keydown',e=>{if(saveMenu&&e.key==='Escape'){e.stopPropagation();closeSaveMenu();}},true);
+  window.addEventListener('blur',closeSaveMenu);
   async function save(){
     if(!ready||converting)return;
     const name=(clips[0]?.name||'animation').replace(/\.(mp4|webm)$/i,'').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)+'_Animated.webp';
-    try{const r=await api.webpSave(name);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
+    try{const r=await api.webpSave(name,overShown);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
   }
   $('wm-add').addEventListener('click',selectFiles);
   $('wm-dropzone').addEventListener('click',selectFiles);
@@ -530,6 +578,8 @@
     clip.freeformSelection=null;clearResult();drawCropPreview();
   });
   $('wm-expand').addEventListener('click',()=>previewFullscreen(true));
+  $('wm-preview').addEventListener('contextmenu',openSaveMenu);
+  $('wm-fullscreen-image').addEventListener('contextmenu',openSaveMenu);
   $('wm-preview').addEventListener('click',()=>previewFullscreen(true));
   $('wm-preview').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();previewFullscreen(true);}});
   $('wm-fullscreen-close').addEventListener('click',()=>previewFullscreen(false));
