@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('creatorTools',{
   introRequest:(action,args)=>ipcRenderer.invoke('creator-tools:intro',action,args),
   updateState:()=>ipcRenderer.invoke('updates:state'),
   checkUpdates:()=>ipcRenderer.invoke('updates:check'),
+  openCrashLog:()=>ipcRenderer.invoke('crashlog:open'),
   installUpdate:()=>ipcRenderer.invoke('updates:install'),
   onUpdateStatus:fn=>ipcRenderer.on('updates:status',(_event,x)=>fn(x)),
   onSelectTab:fn=>ipcRenderer.on('creator-tools:select-tab',(_event,x)=>fn(x))

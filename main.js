@@ -1,11 +1,41 @@
 'use strict';
 const path=require('node:path');
 const fs=require('node:fs');
+// Crash log, earliest part. It uses only built-in Node modules and runs before anything else loads, so even a
+// crash while the app is starting (a missing or broken file) is written down and shown on screen.
+// The log sits next to the program file (the portable app's own folder) so it can be found without opening the app.
+const LOG_NAME='creator-tool-crash.log';
+const logFolder=()=>{
+  const candidates=[process.env.JCCT_CRASHLOG_DIR,path.dirname(process.execPath),require('node:os').tmpdir()].filter(Boolean);
+  for(const dir of candidates){try{fs.mkdirSync(dir,{recursive:true});fs.accessSync(dir,fs.constants.W_OK);return dir;}catch{}}
+  return null;
+};
+let crashLog=null;   // the full logger, created once the app is ready to name its folders
+function earlyWrite(kind,error){
+  if(crashLog){crashLog.write(kind,error);return crashLog.file;}
+  try{
+    const dir=logFolder();if(!dir)return null;
+    const file=path.join(dir,LOG_NAME);
+    fs.appendFileSync(file,`[${new Date().toISOString()}] ${kind}: ${String(error&&error.stack||error).replace(/\r?\n/g,'\n    ')}\n`);
+    return file;
+  }catch{return null;}
+}
+function reportStartupError(kind,error){
+  const file=earlyWrite(kind,error);
+  try{
+    const {dialog:d}=require('electron');
+    if(kind==='main process error'&&d)
+      d.showErrorBox('Juicy Chat Creator Tools hit an error',`${error&&error.message||error}\n\n`+(file?`Details were saved to:\n${file}\n\nPlease send that file to the developer.`:'The details could not be saved.'));
+  }catch{}
+}
+process.on('uncaughtException',error=>reportStartupError('main process error',error));
+process.on('unhandledRejection',reason=>earlyWrite('unhandled promise rejection',reason));
 const {spawn}=require('node:child_process');
 const {app,BrowserWindow,ipcMain,dialog,clipboard,Notification,shell,nativeImage}=require('electron');
 const {WebpMaker}=require('./lib/webpMaker');
 const {create:createIntroService}=require('./introduction-designer/inline-host');
 const {PortableUpdater,finishUpdate,ASSETS}=require('./lib/portableUpdater');
+const {CrashLog}=require('./lib/crashLog');
 // Started by the updater from the downloaded copy: install it, then exit.
 const FINISH_UPDATE=process.argv.find(a=>a.startsWith('--jcct-finish-update='));
 if(FINISH_UPDATE){
@@ -66,6 +96,32 @@ async function finishRename(){
   try{if(JSON.parse(fs.readFileSync(oldMarker,'utf8')).target===INSTALL_DIR)fs.rmSync(oldMarker,{force:true});}catch{}
 }
 app.setName('Juicy Chat Creator Tools');
+// Crash log: a text file in the app's data folder that can be sent to the developer (header button: Crash log).
+// Crash dumps stay in a separate folder next to it and are not needed unless the developer asks for them.
+const logDir=logFolder()||path.join(app.getPath('userData'),'logs');
+crashLog=new CrashLog({dir:logDir});
+try{app.setPath('crashDumps',path.join(app.getPath('userData'),'logs','crash-dumps'));require('electron').crashReporter.start({uploadToServer:false,compress:true});}catch(e){crashLog.write('crash dumps could not be turned on',e);}
+app.on('render-process-gone',(event,contents,details)=>{
+  crashLog.write('WINDOW CRASHED',`reason: ${details.reason}, exit code: ${details.exitCode}`);
+  crashLog.processes('memory at the crash (last known)',lastMetrics);crashLog.memory('at the crash');
+  offerCrashLog(`The window crashed (${details.reason}).`);
+});
+app.on('child-process-gone',(event,details)=>crashLog.write('helper process stopped',`${details.type}${details.name?' '+details.name:''}: ${details.reason}, exit code ${details.exitCode}`));
+let lastMetrics=[];
+const sampleMemory=()=>{try{lastMetrics=app.getAppMetrics();}catch{}};
+// After a crash: offer to open the folder holding the log, so it can be sent to the developer. At most once a minute.
+let lastPrompt=0;
+function offerCrashLog(message){
+  if(Date.now()-lastPrompt<60000)return;lastPrompt=Date.now();
+  dialog.showMessageBox(win&&!win.isDestroyed()?win:undefined,{type:'error',title:'Juicy Chat Creator Tools',message,
+    detail:`What happened was saved in this file. Please send it to the developer:\n${crashLog.file}`,buttons:['Show the crash log','Close'],defaultId:0,cancelId:1,noLink:true})
+    .then(choice=>{if(choice.response===0)showCrashLog();}).catch(()=>{});
+}
+function showCrashLog(){
+  if(!fs.existsSync(crashLog.file))crashLog.write('log opened','no problems recorded yet');
+  shell.showItemInFolder(crashLog.file);
+}
+app.on('will-quit',()=>crashLog.endSession());
 const lock=app.requestSingleInstanceLock();
 let win=null,maker=null,updater=null,intro=null,quitting=false;
 if(!lock)app.quit();
@@ -77,6 +133,17 @@ function launch(){
   win=new BrowserWindow({width:1550,height:1030,minWidth:1050,minHeight:720,show:false,title:'Juicy Chat Creator Tools',backgroundColor:'#100b16',autoHideMenuBar:true,
     icon,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,webviewTag:false}});
   win.loadFile(path.join(__dirname,'renderer','index.html'));
+  const wc=win.webContents;
+  wc.on('unresponsive',()=>crashLog.write('window stopped responding','the window is frozen or very busy'));
+  wc.on('responsive',()=>crashLog.write('window responds again',''));
+  wc.on('did-fail-load',(event,code,description,url)=>crashLog.write('window failed to load',`${description} (${code}) ${url}`));
+  wc.on('preload-error',(event,file,error)=>crashLog.write('window helper script failed',`${file}\n${error&&error.stack||error}`));
+  // Electron 32 passes (event, level, message, line, source); newer versions put the same fields on the event.
+  wc.on('console-message',(event,level,message,line,source)=>{
+    const d=level&&typeof level==='object'?level:event&&event.level!==undefined?event:null;
+    const isError=d?(d.level==='error'||d.level===3):level>=3;
+    if(isError)crashLog.windowError(d?d.message:message,d?d.sourceId:source,d?d.lineNumber:line);
+  });
   win.once('ready-to-show',()=>{win.show();});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',(event,url)=>{const wanted=new URL('file://'+path.join(__dirname,'renderer','index.html')).href;if(url!==wanted)event.preventDefault();});
@@ -97,9 +164,34 @@ app.whenReady().then(async()=>{
   const verifySender=event=>{
     if(!win||win.isDestroyed()||event.sender!==win.webContents)throw Error('Action requires the Juicy Chat Creator Tools desktop window.');
   };
+  const lastRunCrashed=crashLog.startSession({version:app.getVersion(),platform:`${process.platform} ${process.arch}`,os:require('node:os').release(),electron:process.versions.electron,chrome:process.versions.chrome,
+    packaged:app.isPackaged,memory:`${Math.round(require('node:os').totalmem()/1048576)} MB`,program:path.basename(process.execPath)});
+  let memoryTimer=null;
+  const watchMemory=()=>{
+    if(memoryTimer)return;sampleMemory();
+    memoryTimer=setInterval(()=>{if(!conversionActive()){clearInterval(memoryTimer);memoryTimer=null;return;}sampleMemory();crashLog.processes('memory during conversion',lastMetrics);},15000);
+    memoryTimer.unref();
+  };
   for(const [name,method] of Object.entries({begin:'begin',frame:'frame',finish:'finish',cancel:'cancel',preview:'preview'})){
-    ipcMain.handle('webpmaker:'+name,(event,...args)=>{verifySender(event);return maker[method](...args);});
+    ipcMain.handle('webpmaker:'+name,async(event,...args)=>{
+      verifySender(event);
+      try{
+        if(name==='begin'){
+          const o=args[0]||{};
+          crashLog.write('conversion starts',`${o.width}x${o.height}, ${o.fps} FPS, quality ${o.quality}, ${o.expectedFrames} frames from ${Array.isArray(o.clipFrames)?o.clipFrames.length:'?'} clips`);
+          sampleMemory();crashLog.processes('memory before the conversion',lastMetrics);
+        }
+        const result=await maker[method](...args);
+        if(name==='begin')watchMemory();
+        if(name==='finish')crashLog.write('conversion finished','');
+        return result;
+      }catch(error){crashLog.write(`conversion step "${name}" failed`,error);throw error;}
+    });
   }
+  ipcMain.handle('crashlog:open',event=>{
+    verifySender(event);
+    showCrashLog();return {path:crashLog.file};
+  });
   ipcMain.handle('webpmaker:save',async(event,suggested,allowOver)=>{
     verifySender(event);
     if(!maker.resultPath(!!allowOver))throw Error('Convert a WebP before saving.');
@@ -140,6 +232,7 @@ app.whenReady().then(async()=>{
     quitting=true;app.quit();return {restarting:true};
   });
   launch();
+  if(lastRunCrashed&&!E2E)setTimeout(()=>offerCrashLog('The last time you used the app, it did not close normally.'),2500).unref();
   if(!E2E)setTimeout(()=>finishRename().catch(()=>{}),3000).unref();
   if(!E2E){setTimeout(()=>updater.check({silent:true}),4500).unref();setInterval(()=>updater.check({silent:true}),6*60*60*1000).unref();}
   if(UPDATE_E2E)(async()=>{

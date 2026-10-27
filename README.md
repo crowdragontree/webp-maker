@@ -69,7 +69,7 @@ The browser designer works offline after opening its HTML file. Direct HTTPS ima
 All processing is local except loading any HTTPS image URLs that the user chooses to paste. No scripts enter the exported Introduction HTML.
 
 
-# Juicy Chat Creator Tools v1.1.2
+# Juicy Chat Creator Tools v1.2.1
 
 **WebP Maker + Introduction Editor in a single Windows/Linux desktop app.**
 
@@ -95,9 +95,9 @@ All processing is local except loading any HTTPS image URLs that the user choose
 2. Select **Actions → Build Juicy Chat Creator Tools (Windows and Linux)**.
 3. Both Windows and Linux jobs must pass all required source and actual MP4-to-WebP conversion tests.
 4. Download the generated artifacts. Extract the outer GitHub artifact ZIP and obtain `WebP-Maker-Windows-x64.zip` and `WebP-Maker-Linux-x64.zip`.
-5. Publish a **v1.1.2** release with those two inner ZIPs as release assets, using their existing filenames.
+5. Publish a **v1.2.1** release with those two inner ZIPs as release assets, using their existing filenames.
 
-**Compatibility:** The packaged executable remains `WebP-Maker.exe` / `WebP-Maker` solely to support existing WebP Maker installations using the GitHub automatic updater. The application window/title/taskbar name is **Juicy Chat Creator Tools**. Version 1.1.2 is higher than the previous WebP Maker 1.0.3. Do not rename the release asset ZIPs or the executable inside the build folders.
+**Compatibility:** The packaged executable remains `WebP-Maker.exe` / `WebP-Maker` solely to support existing WebP Maker installations using the GitHub automatic updater. The application window/title/taskbar name is **Juicy Chat Creator Tools**. Version 1.2.0 is higher than the previous WebP Maker 1.0.3. Do not rename the release asset ZIPs or the executable inside the build folders.
 
 The Windows and Linux workflows download and SHA-256-verify the official ImageMagick 7.1.2-34 binaries and bundle them with the portable app. No extra ImageMagick install is required, and videos stay local.
 

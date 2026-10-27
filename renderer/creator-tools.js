@@ -33,6 +33,7 @@
     install.hidden=p!=='available';
     install.disabled=p!=='available';
   }
+  $('jcct-crash-log').addEventListener('click',()=>{api.openCrashLog().catch(e=>renderUpdate({phase:'error',message:e.message}));});
   api.onUpdateStatus(renderUpdate);
   api.updateState().then(renderUpdate).catch(e=>renderUpdate({phase:'error',message:e.message}));
   check.addEventListener('click',async()=>{

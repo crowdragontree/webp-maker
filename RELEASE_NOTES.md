@@ -1,30 +1,21 @@
-# JuicyChat Creator Tool v1.2.0
+# JuicyChat Creator Tool v1.2.1
 
 ## New Features
-
-### WebP Maker: merge WebP files, pictures and cross-fade
-- **Merge animated WebP files.** Add two (or more) WebP files and merge them into one, or mix them with MP4 and WebM videos in any order.
-- **Turn pictures into a WebP.** Add PNG or JPG pictures and they become frames of one animated WebP. When there is a picture in the list, a **Seconds per image** setting appears, so you choose how long each picture stays on screen (default 2 seconds). A WebP that is not animated counts as a picture.
-- **Cross-fade between clips.** Tick **Cross-fade between clips** and a **Cross-fade length** setting appears; the shortest allowed is **0.25 seconds**. The clips overlap during the fade, so the total length is shorter by the overlaps, and the panel shows the total. A clip that is too short for the fade is named in the message.
-
-### Introduction Designer: simpler and faster to use (new since 1.1.1)
-- **Simple mode** is now the default and shows only the everyday controls. The **Advanced** switch in the top bar brings back everything: Paste HTML, free placement, layered borders and per-item CSS. Your choice is remembered, and nothing in your design is deleted when you switch.
-- **Pick a look**: 9 ready-made styles (Void Violet, Royal Violet, Midnight Blue, Crimson Noir, Forest Glow, Rose Gold, Neon Night, Old Parchment and Clean Light). Your text stays, and **Ctrl+Z** undoes it.
-- **Character meter** under the counter: amber near 12,000 characters and red over JuicyChat's 15,000 limit. The styling code counts too, not just your words.
-- **Removed-code warning**: a note lists the CSS styles or HTML tags that JuicyChat's rules removed, both when you paste HTML and when you edit an item's CSS.
-- **Quick-start tips**: a 3-step strip on your first visit. The **?** button brings it back.
+- **Crash log.** If the tool crashes, freezes or shows an error, it now writes what happened to a text file called `creator-tool-crash.log`. **The file is in the same folder as the program** (next to `JuicyChat Creator Tool.exe` on Windows), so it can be found even when the app will not open. Send that file to the developer.
+  - If the app crashes while it is starting, a message shows the error and where the file is.
+  - If the window crashes, a message offers **Show the crash log**, which opens the folder with the file selected. If the app is cut off without a normal exit, the next start notes that in the log and offers the same button. The **Crash log** button in the top bar does the same at any time.
+  - It records the app version, Windows/Linux version and how much memory the computer has, then any crash, freeze, error or failed conversion, with the time.
+  - While a WebP is converting it also notes how much memory the tool uses, which helps find crashes caused by running out of memory.
+  - The file stays on your computer until you send it. Nothing is uploaded. It holds technical details only (no pictures, videos or Introduction text), but error lines can contain a file name or the program's folder, which may include your Windows user name.
+  - If the program's folder cannot be written to (for example under Program Files), the file is in the app's data folder instead, for example `%APPDATA%\Juicy Chat Creator Tools\logs`.
+  - Installing an update replaces the program's folder, so the log starts fresh after an update.
 
 ## Changes
-- **WebP Maker: a file that is too big now says how big.** The error reads, for example, "The WebP still exceeds 9.99 MB: the file is 10.10 MB at 20 FPS and quality 60, 0.11 MB over the limit." The too-big file is no longer deleted: it is kept and shown in the preview, so you can look at it and save it. **Right-click the preview > Save image as** now works on every finished WebP (the Save button is unchanged).
-- New designs start in the **Stack** layout, so items line up without dragging. Free placement is still available and is labeled "advanced".
-- Plain labels, for example **Card width**, **Space inside the card**, **Rounded corners**, **Second background color** and **Blend direction**.
-- The preview is **748 px** wide, like JuicyChat's own. 480 px and 360 px (phone) are still available.
-- The Introduction Designer now uses the same files as the web page and Juicy Blueprint Studio, so all three stay identical.
+- Nothing else changes. WebP Maker, the Introduction Editor and the updater work as in v1.2.0.
 
 ## Compatibility
 - Windows 64-bit and Linux 64-bit
-- Your saved designs and templates keep working. Stacked designs stay stacked, and free-placement designs stay free.
-- Single MP4 conversion, cropping, custom dimensions, quality optimization, VP9/WebM support and self-installing updates work as before. Merging re-encodes the clips, so quality is set again by the Quality setting, and the 9.99 MB limit still applies.
+- Your saved designs and templates keep working.
 - All video processing stays local. No uploads.
 
 ## Updating
