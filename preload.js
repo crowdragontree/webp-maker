@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('juicyApp',{
   webpNotify:status=>ipcRenderer.invoke('webpmaker:notify',status),
   onWebpProgress:fn=>ipcRenderer.on('webpmaker:progress',(_event,x)=>fn(x)),
   onWebpOpen:fn=>ipcRenderer.on('webpmaker:open',fn),
-  // pictures: the PNG Compressor and every picture format
+  // pictures: the Image Compressor and every picture format
   pathForFile:file=>{try{return webUtils.getPathForFile(file)||'';}catch{return '';}},
   compressPick:()=>ipcRenderer.invoke('compress:pick'),
   compressRun:files=>ipcRenderer.invoke('compress:run',files),

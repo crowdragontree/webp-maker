@@ -1,4 +1,4 @@
-// PNG Compressor tab (v1.2.6). The work happens in the app's background worker (lib/pngCompress.js); this file is the list you see.
+// Image Compressor tab (v1.2.6). The work happens in the app's background worker (lib/pngCompress.js); this file is the list you see.
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);

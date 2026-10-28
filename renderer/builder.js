@@ -40,6 +40,9 @@
       context: {templateId: B.spec.id}
     });
   }
+  window.BuilderIntro = {
+    active() { return B.spec && B.v ? {context: {templateId: B.spec.id}, label: String((B.v.header && B.v.header.scene) || (B.v.names && B.v.names[1]) || B.spec.name || 'the open bot').trim() || 'the open bot'} : null; }
+  };
   window.addEventListener('creator:intro-returned', ev => {
     const result = ev.detail || {};
     if (!B.spec || !B.v || !result.html) return;

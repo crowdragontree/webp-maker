@@ -4,7 +4,7 @@
   const api=window.creatorTools;
   if(!api)throw new Error('Juicy Chat Creator Tools desktop bridge unavailable.');
   const navs=[...document.querySelectorAll('.jcct-tabs [data-tab]')];
-  const TABS={webpmaker:'WebP Maker',compressor:'PNG Compressor',builder:'Bot Builder',introduction:'Introduction Editor',settings:'Settings'};
+  const TABS={webpmaker:'WebP Maker',compressor:'Image Compressor',builder:'Bot Builder',introduction:'Introduction Editor',settings:'Settings'};
   function switchTo(name){
     if(!Object.prototype.hasOwnProperty.call(TABS,name))return;
     for(const btn of navs){const current=btn.dataset.tab===name;btn.classList.toggle('active',current);btn.setAttribute('aria-selected',String(current));}
@@ -34,15 +34,22 @@
     try{
       let value;
       if(req.action==='save-return'){
-        if(!designerContext)throw new Error('Open the Introduction Editor from the Bot Builder (Build Introduction) to use Save and Return. Use Copy Introduction here instead.');
+        // Opened from Build Introduction: the design goes back to that bot. Opened from the tab: it goes to the bot open in the Bot Builder.
+        let context=designerContext&&designerContext.context||null;
+        if(!designerContext){
+          const active=window.BuilderIntro&&typeof window.BuilderIntro.active==='function'?window.BuilderIntro.active():null;
+          if(!active)throw new Error('Open or choose a bot in the Bot Builder first, then Save and Return will put this Introduction into it.');
+          if(!confirm(`Save this Introduction into "${active.label}" in the Bot Builder? It replaces that bot's current Introduction.`)){response={type:'jcct:intro:response',id:req.id,ok:false,error:'Save and Return cancelled.'};event.source.postMessage(response,'*');return;}
+          context=active.context;
+        }
         value=await api.introRequest('save-return',req.args);
-        window.dispatchEvent(new CustomEvent('creator:intro-returned',{detail:{...value,context:designerContext.context||null}}));
+        window.dispatchEvent(new CustomEvent('creator:intro-returned',{detail:{...value,context}}));
         switchTo('builder');
       }else if(req.action==='close'){
         value=true;switchTo(designerContext?'builder':'webpmaker');
       }else{
         value=await api.introRequest(req.action,req.args);
-        if(req.action==='bootstrap'&&value&&typeof value==='object')value={...value,embedded:!!designerContext,seed:designerContext};
+        if(req.action==='bootstrap'&&value&&typeof value==='object')value={...value,embedded:true,seed:designerContext};
       }
       response={type:'jcct:intro:response',id:req.id,ok:true,value};
     }catch(e){response={type:'jcct:intro:response',id:req.id,ok:false,error:String(e?.message||e)};}

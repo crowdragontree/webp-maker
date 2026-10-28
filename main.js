@@ -197,7 +197,7 @@ app.whenReady().then(async()=>{
     }catch{return false;}
   });
   ipcMain.handle('creator-tools:intro',(event,action,args)=>{verifySender(event);return intro.handle(action,args);});
-  // ---- PNG Compressor and picture reading (every picture format)
+  // ---- Image Compressor and picture reading (every picture format)
   imageService.register({ipcMain,dialog,shell,app,getWindow:()=>win,send,verify:verifySender});
   // ---- Bot Builder: the person's own templates, limits, drafts and saved bots live in the app's data folder
   const builder=BotBuilder.create({userData:app.getPath('userData'),resourcesDir:path.join(__dirname,'resources')});

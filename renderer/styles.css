@@ -1532,7 +1532,7 @@ body:has(#view-webpmaker.active) .topbar p{margin-top:3px;font-size:12px}
 #wm-crossfade-wrap[hidden]{display:none!important}
 .wm-length-note{grid-column:1/-1;color:var(--muted);font-size:12px;min-height:1em}
 
-/* v1.3.0: Bot Builder, PNG Compressor and Grammar engine pieces carried over from the Studio */
+/* v1.3.0: Bot Builder, Image Compressor and Grammar engine pieces carried over from the Studio */
 .bp-sum{margin:0 0 8px;font-size:12.5px;color:#e8dcee;line-height:1.45}.bp-changes h6{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#cbbfd0}
 details.bp-log{border:1px solid #2a2031;border-radius:8px;background:#110c16;margin:6px 0;padding:0}details.bp-log>summary{cursor:pointer;padding:7px 10px;font-size:12px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;list-style-position:inside}
 details.bp-log>summary b{color:#fff;font-size:12px;overflow-wrap:anywhere}details.bp-log>summary span{color:#a491ad;font-size:11px}details.bp-log>summary em{color:#f0cf8a;font-size:11px;font-style:normal}
@@ -1567,7 +1567,7 @@ ul.bp-lines ins,.bp-changes p ins{background:rgba(127,217,154,.16);color:#a5f0bd
 .bb-tpl-log{margin:0 0 12px;padding:10px 12px;border:1px solid #3a2a45;border-radius:10px;background:#140e19}.bb-tpl-log[hidden]{display:none}
 .bb-tl-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:6px}.bb-tl-head b{color:#fff;font-size:13px}.bb-tl-head .ghost{margin-left:auto}
 .bb-tl-item{border-top:1px solid #2a2031;padding:8px 0}.bb-tl-item:first-of-type{border-top:0}.bb-tl-top{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:center}.bb-tl-top b{color:#fff;font-size:12.5px}.bb-tl-top em{color:#f0cf8a;font-size:11px;font-style:normal;margin-left:6px}.bb-tl-top .ghost{margin-left:6px}
-/* PNG Compressor (v1.2.6) */
+/* Image Compressor (v1.2.6) */
 .pc-drop{margin-top:6px}
 .pc-drop .wm-drop-copy{display:flex;flex-direction:column;align-items:center;gap:4px}
 .pc-how{margin:12px 2px 6px;line-height:1.5}

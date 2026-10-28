@@ -8,7 +8,7 @@ for(const file of ['main.js','preload.js','lib/webpMaker.js','lib/portableUpdate
   'assets/icon.png','assets/icon.ico', 'scripts/e2e-desktop.js'])
   assert(fs.existsSync(path.join(root,file)),`Missing application component ${file}`);
 const html=read('renderer/index.html');
-assert(html.includes('Juicy Chat Creator Tools')&&html.includes('WebP Maker')&&html.includes('Introduction Editor')&&html.includes('Bot Builder')&&html.includes('PNG Compressor'));
+assert(html.includes('Juicy Chat Creator Tools')&&html.includes('WebP Maker')&&html.includes('Introduction Editor')&&html.includes('Bot Builder')&&html.includes('Image Compressor')&&html.includes('Compress your images to under 1MB.'));
 assert(html.includes('id="jcct-introduction-frame"'),'Embedded editor iframe missing');
 assert(read('introduction-designer/index.html').includes('layout.js'));
 assert(read('introduction-designer/app.js').includes('applyArrangement'),'Smart snap engine not installed');
