@@ -36,6 +36,9 @@ const {WebpMaker}=require('./lib/webpMaker');
 const {create:createIntroService}=require('./introduction-designer/inline-host');
 const {PortableUpdater,finishUpdate,ASSETS}=require('./lib/portableUpdater');
 const {CrashLog}=require('./lib/crashLog');
+const BotBuilder=require('./lib/botBuilder');
+const imageService=require('./lib/imageService');
+const LANGUAGETOOL=require('./lib/languagetool');
 // Started by the updater from the downloaded copy: install it, then exit.
 const FINISH_UPDATE=process.argv.find(a=>a.startsWith('--jcct-finish-update='));
 if(FINISH_UPDATE){
@@ -194,6 +197,64 @@ app.whenReady().then(async()=>{
     }catch{return false;}
   });
   ipcMain.handle('creator-tools:intro',(event,action,args)=>{verifySender(event);return intro.handle(action,args);});
+  // ---- PNG Compressor and picture reading (every picture format)
+  imageService.register({ipcMain,dialog,shell,app,getWindow:()=>win,send,verify:verifySender});
+  // ---- Bot Builder: the person's own templates, limits, drafts and saved bots live in the app's data folder
+  const builder=BotBuilder.create({userData:app.getPath('userData'),resourcesDir:path.join(__dirname,'resources')});
+  const fileName=(name,fallback)=>String(name||fallback).replace(/[\\/:*?"<>|]/g,'').trim()||fallback;
+  ipcMain.handle('builder:templates',event=>{verifySender(event);return builder.templates();});
+  ipcMain.handle('builder:state',event=>{verifySender(event);return builder.state();});
+  ipcMain.handle('builder:saveDraft',(event,id,values)=>{verifySender(event);return builder.saveDraft(id,values);});
+  ipcMain.handle('builder:setLimits',(event,id,limits)=>{verifySender(event);return builder.setLimits(String(id||''),limits);});
+  ipcMain.handle('builder:remove',(event,id)=>{verifySender(event);return builder.remove(id);});
+  ipcMain.handle('builder:hiddenTemplates',event=>{verifySender(event);return builder.hiddenList();});
+  ipcMain.handle('builder:unhide',(event,id)=>{verifySender(event);return builder.unhide(String(id||''));});
+  ipcMain.handle('builder:templateInfo',(event,id)=>{verifySender(event);return builder.info(id);});
+  ipcMain.handle('builder:templateLogs',event=>{verifySender(event);return builder.logs();});
+  ipcMain.handle('builder:closeTemplateLog',(event,id)=>{verifySender(event);return builder.closeLog(id);});
+  ipcMain.handle('builder:restore',(event,id)=>{verifySender(event);return builder.restore(id);});
+  ipcMain.handle('builder:import',async event=>{
+    verifySender(event);
+    const picked=await dialog.showOpenDialog(win,{title:'Add bot template',properties:['openFile','multiSelections'],filters:[{name:'Text templates',extensions:['txt']}]});
+    if(picked.canceled||!picked.filePaths.length)return {added:[],errors:[]};
+    return builder.addFiles(picked.filePaths);
+  });
+  ipcMain.handle('builder:replace',async(event,id)=>{
+    verifySender(event);
+    const picked=await dialog.showOpenDialog(win,{title:'Choose the updated template',properties:['openFile'],filters:[{name:'Text templates',extensions:['txt']}]});
+    if(picked.canceled||!picked.filePaths.length)return {replaced:false};
+    return builder.replaceFrom(id,picked.filePaths[0]);
+  });
+  ipcMain.handle('builder:saveBot',(event,templateId,values,full)=>{verifySender(event);return builder.saveBot(String(templateId||''),values,full);});
+  ipcMain.handle('builder:savedBots',event=>{verifySender(event);return builder.savedBots();});
+  ipcMain.handle('builder:loadSavedBot',(event,key)=>{verifySender(event);return builder.loadSavedBot(String(key||''));});
+  ipcMain.handle('builder:deleteSavedBot',(event,key)=>{verifySender(event);return builder.deleteSavedBot(String(key||''));});
+  // Save the finished bot as .txt or .json
+  ipcMain.handle('builder:export',async(event,name,text)=>{
+    verifySender(event);
+    const json=/\.json$/i.test(String(name||''));
+    const saved=await dialog.showSaveDialog(win,{title:json?'Save bot as .json':'Save bot as .txt',defaultPath:fileName(name,json?'Bot.json':'Bot.txt'),filters:json?[{name:'JSON',extensions:['json']}]:[{name:'Text',extensions:['txt']}]});
+    if(saved.canceled||!saved.filePath)return null;
+    fs.writeFileSync(saved.filePath,String(text||''),'utf8');return saved.filePath;
+  });
+  // Open a bot that was built somewhere else (.txt) and fill the sections from it
+  ipcMain.handle('builder:openBot',async event=>{
+    verifySender(event);
+    const picked=await dialog.showOpenDialog(win,{title:'Open a built bot (.txt)',properties:['openFile'],filters:[{name:'Built bot',extensions:['txt']}]});
+    if(picked.canceled||!picked.filePaths||!picked.filePaths[0])return null;
+    const file=picked.filePaths[0];if(fs.statSync(file).size>5e6)throw Error('That file is too large to be a bot (over 5 MB).');
+    return {name:path.basename(file),text:fs.readFileSync(file,'utf8')};
+  });
+  // ---- Grammar engine (LanguageTool): installed and run on this computer only
+  const LTM=LANGUAGETOOL.create({userData:app.getPath('userData')});
+  const lt=fn=>async(event,...a)=>{verifySender(event);try{return await fn(...a);}catch(e){return {ok:false,error:String(e&&e.message||e)};}};
+  ipcMain.handle('lt:status',lt(()=>({ok:true,...LTM.status()})));
+  ipcMain.handle('lt:install',lt(async()=>{await LTM.install(p=>send('lt:progress',p));return {ok:true,...LTM.status()};}));
+  ipcMain.handle('lt:remove',lt(async()=>({ok:true,...(await LTM.remove())})));
+  ipcMain.handle('lt:enable',lt(on=>({ok:true,...LTM.setEnabled(on)})));
+  ipcMain.handle('lt:check',lt(text=>LTM.check(String(text||'').slice(0,20000))));
+  app.on('before-quit',()=>{try{LTM.stop();}catch{}});
+  ipcMain.handle('creator-tools:copy',(event,text)=>{verifySender(event);clipboard.writeText(String(text==null?'':text).slice(0,2000000));return true;});
   let testRelease;
   if(UPDATE_E2E){
     const zip=process.env.CREATOR_TOOLS_UPDATE_ZIP,next=process.env.CREATOR_TOOLS_UPDATE_VERSION,name=ASSETS[process.platform];

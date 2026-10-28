@@ -1,5 +1,5 @@
 'use strict';
-const {contextBridge,ipcRenderer}=require('electron');
+const {contextBridge,ipcRenderer,webUtils}=require('electron');
 contextBridge.exposeInMainWorld('juicyApp',{
   webpBegin:opts=>ipcRenderer.invoke('webpmaker:begin',opts),
   webpFrame:buffer=>ipcRenderer.invoke('webpmaker:frame',buffer),
@@ -9,7 +9,44 @@ contextBridge.exposeInMainWorld('juicyApp',{
   webpSave:(filename,allowOver)=>ipcRenderer.invoke('webpmaker:save',filename,allowOver),
   webpNotify:status=>ipcRenderer.invoke('webpmaker:notify',status),
   onWebpProgress:fn=>ipcRenderer.on('webpmaker:progress',(_event,x)=>fn(x)),
-  onWebpOpen:fn=>ipcRenderer.on('webpmaker:open',fn)
+  onWebpOpen:fn=>ipcRenderer.on('webpmaker:open',fn),
+  // pictures: the PNG Compressor and every picture format
+  pathForFile:file=>{try{return webUtils.getPathForFile(file)||'';}catch{return '';}},
+  compressPick:()=>ipcRenderer.invoke('compress:pick'),
+  compressRun:files=>ipcRenderer.invoke('compress:run',files),
+  compressCancel:()=>ipcRenderer.invoke('compress:cancel'),
+  compressShow:file=>ipcRenderer.invoke('compress:show',file),
+  imageRead:file=>ipcRenderer.invoke('image:read',file),
+  imageHeicToPng:(bytes,name)=>ipcRenderer.invoke('image:heicToPng',bytes,name),
+  onCompressProgress:fn=>ipcRenderer.on('compress:progress',(_event,x)=>fn(x)),
+  copyText:text=>ipcRenderer.invoke('creator-tools:copy',text),
+  // Bot Builder
+  builderState:()=>ipcRenderer.invoke('builder:state'),
+  builderTemplates:()=>ipcRenderer.invoke('builder:templates'),
+  builderSetLimits:(id,limits)=>ipcRenderer.invoke('builder:setLimits',id,limits),
+  builderRemove:id=>ipcRenderer.invoke('builder:remove',id),
+  builderHiddenTemplates:()=>ipcRenderer.invoke('builder:hiddenTemplates'),
+  builderUnhide:id=>ipcRenderer.invoke('builder:unhide',id),
+  builderImport:()=>ipcRenderer.invoke('builder:import'),
+  builderReplace:id=>ipcRenderer.invoke('builder:replace',id),
+  builderRestore:id=>ipcRenderer.invoke('builder:restore',id),
+  builderTemplateLogs:()=>ipcRenderer.invoke('builder:templateLogs'),
+  builderCloseTemplateLog:id=>ipcRenderer.invoke('builder:closeTemplateLog',id),
+  builderTemplateInfo:id=>ipcRenderer.invoke('builder:templateInfo',id),
+  builderSaveDraft:(id,values)=>ipcRenderer.invoke('builder:saveDraft',id,values),
+  builderSaveBot:(templateId,values,full)=>ipcRenderer.invoke('builder:saveBot',templateId,values,full),
+  builderSavedBots:()=>ipcRenderer.invoke('builder:savedBots'),
+  builderLoadSavedBot:key=>ipcRenderer.invoke('builder:loadSavedBot',key),
+  builderDeleteSavedBot:key=>ipcRenderer.invoke('builder:deleteSavedBot',key),
+  builderExport:(name,text)=>ipcRenderer.invoke('builder:export',name,text),
+  builderOpenBot:()=>ipcRenderer.invoke('builder:openBot'),
+  // Grammar engine (LanguageTool)
+  ltStatus:()=>ipcRenderer.invoke('lt:status'),
+  ltInstall:()=>ipcRenderer.invoke('lt:install'),
+  ltRemove:()=>ipcRenderer.invoke('lt:remove'),
+  ltEnable:on=>ipcRenderer.invoke('lt:enable',!!on),
+  ltCheck:text=>ipcRenderer.invoke('lt:check',text),
+  onLtProgress:fn=>ipcRenderer.on('lt:progress',(_event,x)=>fn(x))
 });
 contextBridge.exposeInMainWorld('creatorTools',{
   introRequest:(action,args)=>ipcRenderer.invoke('creator-tools:intro',action,args),

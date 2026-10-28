@@ -1417,7 +1417,7 @@
       const init=await host.bootstrap();embedded=!!init.embedded;templates=init.templates||[];
       $('id-return').hidden=!embedded;
       await refreshTemplates();seedData(init.seed,init.draft);
-      host.onContext?.(incoming=>{if(incoming){seedData(incoming,null);notice('Loaded Introduction from the active bot.');}});
+      host.onContext?.(incoming=>{if(incoming){embedded=true;$('id-return').hidden=false;seedData(incoming,null);notice('Loaded Introduction from the active bot.');}});
     }catch(e){seedData(null,null);notice('Template storage unavailable: '+e.message,true);}
     renderOutput();
   }

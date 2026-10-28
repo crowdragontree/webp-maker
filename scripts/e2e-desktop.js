@@ -31,7 +31,7 @@ async function run({app,win,maker,root}){
       document.querySelector('[data-tab="webpmaker"]').click();
       return {all,isEditor,version:document.getElementById('jcct-version').textContent};
     })()`);
-    assert.deepEqual(tabs.all,['webpmaker','introduction']);assert(tabs.isEditor);
+    assert.deepEqual(tabs.all,['webpmaker','compressor','builder','introduction','settings']);assert(tabs.isEditor);
     const samples=[1,2,3].map(i=>{
       const name=`webp-vp9-${i}.mp4`,file=path.join(root,'tests','fixtures',name);
       assert(fs.existsSync(file),`Test fixture missing: ${name}`);
@@ -81,7 +81,7 @@ async function run({app,win,maker,root}){
     let cursor=0;const unique=sizes.map(count=>{const result=new Set(signatures.slice(cursor,cursor+count)).size;cursor+=count;return result;});
     assert(unique.every(n=>n>=5),`Frozen video detected; unique frames by clip: ${unique}`);
     fs.writeFileSync(out,JSON.stringify({ok:true,version:app.getVersion(),tabs,frames,unique,bytes:info.bytes,width:info.width,height:info.height},null,2));
-    console.log('PASS: packaged Windows/Linux app, two tabs, three moving VP9 clips, 480x640 animated WebP, 9.99MB cap.');
+    console.log('PASS: packaged Windows/Linux app, five tabs, three moving VP9 clips, 480x640 animated WebP, 9.99MB cap.');
   }catch(e){
     const error=String(e&&e.stack||e);
     fs.writeFileSync(out,JSON.stringify({ok:false,error},null,2));

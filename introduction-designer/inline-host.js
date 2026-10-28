@@ -5,7 +5,7 @@ const path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const Core=require('./core');
 const MAX_DOC_BYTES=350000;
-const ALLOWED=new Set(['bootstrap','draft','templates','template-save','template-delete','template-export','template-import','copy','close']);
+const ALLOWED=new Set(['bootstrap','draft','templates','template-save','template-delete','template-export','template-import','copy','save-return','close']);
 function create({app,clipboard,dialog,onClose}){
   const folder=()=>path.join(app.getPath('userData'),'introduction-designer');
   const names=()=>({templates:path.join(folder(),'templates.json'),draft:path.join(folder(),'working-draft.json')});
@@ -63,6 +63,23 @@ function create({app,clipboard,dialog,onClose}){
         const html=String(args[0]||'');const result=Core.verifyOutput(html);
         if(!result.valid)throw Error(result.issues.join(' '));
         clipboard.writeText(html);return result.length;
+      }
+      case 'save-return':{
+        // the finished design goes back to the Bot Builder: checked again here, and the template version (the same HTML with {{intro}}, {{name}} and {{scene}} where the bot's own words go) is made for it
+        const payload=args[0]||{},doc=ensureDoc(payload.design),html=String(payload.html||'');
+        const result=Core.verifyOutput(html);if(!result.valid)throw Error(result.issues.join(' '));
+        if(doc.mode!=='source'&&Core.compile(doc,{formatted:true})!==html)throw Error('Design changed during save. Please try again.');
+        write(names().draft,doc);
+        let templateHtml='';
+        try{
+          if(doc.mode==='source')templateHtml=String(doc.sourceHtml||'').replace(/\{\{\s*extra\s*\}\}/gi,'');
+          else{
+            const tdoc=JSON.parse(JSON.stringify(doc));
+            tdoc.fields={...(doc.fields||{}),intro:'{{intro}}',name:'{{name}}',scene:'{{scene}}',extra:''};
+            templateHtml=Core.compile(tdoc,{formatted:true});
+          }
+        }catch{templateHtml='';}
+        return {html,design:doc,templateHtml};
       }
       case 'close':if(typeof onClose==='function')onClose();return true;
       default:throw Error('Unsupported action.');

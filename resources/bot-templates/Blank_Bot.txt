@@ -1,0 +1,18 @@
+Scene Name: [Scene name]
+Name: [Character name]
+Age: [Age]
+
+Introduction:
+[Write the Introduction here]
+
+Personality:
+[Write the Personality here]
+
+Scenario:
+[Write the Scenario here]
+
+Greeting:
+[Write the Greeting here]
+
+Tags:
+[Your tags, separated by commas]

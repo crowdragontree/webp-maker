@@ -23,7 +23,7 @@
   let adding=false;
   let cropPointerDrag=null;
   // What can be added: videos, animated WebP files, and PNG/JPG pictures (a still WebP counts as a picture).
-  const kindOf=name=>/\.(mp4|webm)$/i.test(name)?'video':/\.webp$/i.test(name)?'webp':/\.(png|jpe?g)$/i.test(name)?'image':'';
+  const kindOf=name=>/\.(mp4|webm)$/i.test(name)?'video':/\.webp$/i.test(name)?'webp':(window.ImageFormats&&window.ImageFormats.isImageName(name))||/\.(png|jpe?g)$/i.test(name)?'image':'';
   const imageSeconds=()=>{const v=Number($o('wm-image-seconds')?.value);return Number.isFinite(v)?v:2;};
   const crossfadeOn=()=>!!$o('wm-crossfade-on')?.checked;
   const crossfadeSeconds=()=>crossfadeOn()?Number($o('wm-crossfade-seconds')?.value):0;
@@ -361,9 +361,9 @@
   async function loadImageClip(file){
     if(!file.size)throw new Error(`${file.name} is empty.`);
     let bitmap;
-    try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}
-    catch{throw new Error(`Could not read ${file.name}. Choose a standard PNG, JPG or WebP picture.`);}
-    try{return makeClip(file,'image',stillCanvas(bitmap,bitmap.width,bitmap.height,true),{duration:0});}finally{bitmap.close();}
+    try{bitmap=await window.ImageFormats.toDrawable(file,{heic:(b,n)=>window.juicyApp.imageHeicToPng(b,n)});}     // any picture: PNG, JPG, GIF, BMP, TIFF, AVIF, HEIC, ICO, SVG...
+    catch(e){throw new Error(e&&e.message?e.message:`Could not read ${file.name}. Choose a picture file.`);}
+    try{return makeClip(file,'image',stillCanvas(bitmap,bitmap.width,bitmap.height,true),{duration:0});}finally{if(bitmap.close)bitmap.close();}
   }
   async function loadWebpClip(file){
     if(!file.size)throw new Error(`${file.name} is empty.`);
@@ -386,7 +386,7 @@
     adding=true;clearError();
     try{
       const picked=Array.from(files);
-      if(picked.some(f=>!kindOf(f.name)))throw new Error('Choose MP4, WebM, WebP, PNG or JPG files.');
+      if(picked.some(f=>!kindOf(f.name)))throw new Error('Choose MP4, WebM or picture files (WebP, PNG, JPG, GIF, BMP, TIFF, AVIF, HEIC, ICO, SVG).');
       if(clips.length+picked.length>30)throw new Error('Choose up to 30 clips.');
       const known=new Set(clips.map(f=>f.key));
       for(const file of picked){

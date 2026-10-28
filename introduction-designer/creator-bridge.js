@@ -5,14 +5,23 @@
 (() => {
   const pending=new Map();
   let nextId=1;
-  function invoke(action,...args){
+  function invokeWith(timeoutMs,action,args){
     if(window.parent===window)return Promise.reject(new Error('Open Introduction Editor from Juicy Chat Creator Tools.'));
     return new Promise((resolve,reject)=>{
       const id=nextId++;
-      const timeout=setTimeout(()=>{pending.delete(id);reject(new Error('Introduction Editor request timed out.'));},30000);
+      const timeout=setTimeout(()=>{pending.delete(id);reject(new Error('Introduction Editor request timed out.'));},timeoutMs);
       pending.set(id,{resolve,reject,timeout});
       window.parent.postMessage({type:'jcct:intro:request',id,action,args},'*');
     });
+  }
+  const invoke=(action,...args)=>invokeWith(30000,action,args);
+  // The Editor can start before the page around it is ready to answer, so the first request (which only reads) is simply asked again a moment later.
+  async function bootstrap(){
+    for(let attempt=0;attempt<12;attempt++){
+      try{return await invokeWith(1500,'bootstrap',[]);}
+      catch(e){if(!/timed out/.test(String(e&&e.message)))throw e;}
+    }
+    throw new Error('Introduction Editor could not reach the app.');
   }
   window.addEventListener('message',event=>{
     if(event.source!==window.parent||event.data?.type!=='jcct:intro:response')return;
@@ -23,11 +32,13 @@
     else record.reject(new Error(String(event.data.error||'The action was unsuccessful.')));
   });
   window.introHost={
-    bootstrap:()=>invoke('bootstrap'),saveDraft:doc=>invoke('draft',doc),
+    bootstrap,saveDraft:doc=>invoke('draft',doc),
     templates:()=>invoke('templates'),saveTemplate:(name,doc,id)=>invoke('template-save',name,doc,id),
     deleteTemplate:id=>invoke('template-delete',id),exportTemplate:id=>invoke('template-export',id),
     importTemplate:()=>invoke('template-import'),copy:html=>invoke('copy',html),
-    saveAndReturn:()=>Promise.reject(new Error('Use Copy Introduction in this standalone app. Save and Return is available inside Juicy Blueprint Studio.')),
-    close:()=>invoke('close'),onContext:()=>{}
+    saveAndReturn:(html,design)=>invoke('save-return',{html,design}),
+    close:()=>invoke('close'),
+    // the Bot Builder's "Build Introduction" sends the active bot's words (and its earlier design) here
+    onContext:cb=>window.addEventListener('message',event=>{if(event.source===window.parent&&event.data?.type==='jcct:intro:context')cb(event.data.payload);})
   };
 })();

@@ -26,3 +26,9 @@ body:has(.jcct-editor-view.active) .jcct-main{padding:10px 14px 12px;overflow:hi
 #view-webpmaker .wm-layout>.panel{margin-bottom:0}
 @media(max-width:1400px){.jcct-header{gap:13px}.jcct-identity{min-width:235px}.jcct-tabs{justify-content:flex-start}.jcct-update-actions{max-width:100%}}
 @media(max-width:850px){body{overflow:auto}.jcct-header{align-items:stretch}.jcct-tabs{order:3;width:100%;min-width:0;justify-content:center}.jcct-update-actions{margin-left:auto}.jcct-main{overflow:auto}.jcct-editor-view iframe{min-height:900px}.jcct-brand strong{font-size:14px}}
+/* v1.3.0: five tabs */
+.jcct-tabs .nav-btn{flex:0 0 auto;min-width:0;padding:10px 13px}
+.jcct-tabs{flex-wrap:wrap;min-width:0}
+/* the Bot Builder scrolls inside the tool's own panel, so its sticky section titles sit at the top of that panel */
+#bb-form:not(.bb-all)>.bb-sec>summary{top:0}
+#view-builder{padding-bottom:30px}
