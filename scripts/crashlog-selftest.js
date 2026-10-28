@@ -85,3 +85,11 @@ M._load=function(r,...a){if(r==='electron')return {app:{setName(){},requestSingl
   console.log('Crash log self-test passed: file writing, size limit, hard-exit detection, a crash while the app loads, window/helper/main-process crashes, conversion steps, Crash log button.');
   process.exit(0);
 })().catch(e=>{console.error(e);process.exit(1);});
+
+// v1.2.2: the clean-up step after start no longer reads or writes Windows shortcut files (the app was cut off hard there on some Windows 10 computers), and each startup step is logged
+{
+  const main=require('fs').readFileSync(require('path').join(__dirname,'..','main.js'),'utf8'), fr=main.slice(main.indexOf('async function finishRename'),main.indexOf("app.setName('Juicy Chat Creator Tools')"));
+  assert(!/readShortcutLink|writeShortcutLink/.test(fr),'finishRename does not touch shortcut files');
+  for(const step of ['app ready','window: created','window: page loaded','clean-up of old update files: start','clean-up of old update files: done','update check: start','update check: done'])assert(main.includes(step),'startup step logged: '+step);
+  console.log('startup breadcrumb checks passed');
+}

@@ -60,29 +60,10 @@ if(app.isPackaged&&path.basename(process.execPath)===LEGACY_EXE_NAME&&fs.existsS
 }
 async function finishRename(){
   if(!app.isPackaged||E2E||path.basename(process.execPath)!==EXE_NAME)return;
-  const legacy=path.join(INSTALL_DIR,LEGACY_EXE_NAME);
-  // Windows: shortcuts and pins that still open WebP-Maker.exe now open the new name.
-  if(process.platform==='win32'){
-    const roaming=app.getPath('appData');
-    for(const dir of [app.getPath('desktop'),path.join(roaming,'Microsoft','Windows','Start Menu','Programs'),
-      path.join(roaming,'Microsoft','Internet Explorer','Quick Launch'),
-      path.join(roaming,'Microsoft','Internet Explorer','Quick Launch','User Pinned','TaskBar'),
-      path.join(roaming,'Microsoft','Internet Explorer','Quick Launch','User Pinned','StartMenu')]){
-      let links=[];try{links=fs.readdirSync(dir).filter(n=>/\.lnk$/i.test(n));}catch{continue;}
-      for(const name of links){
-        const link=path.join(dir,name);
-        try{
-          const info=shell.readShortcutLink(link);
-          if(path.resolve(info.target).toLowerCase()===legacy.toLowerCase())
-            shell.writeShortcutLink(link,'update',{target:process.execPath,cwd:INSTALL_DIR,icon:process.execPath,iconIndex:0});
-        }catch{}
-      }
-    }
-  }
-  // Remove the old program name once the hand-over process has exited.
-  for(let i=0;i<60&&fs.existsSync(legacy);i++){
-    try{fs.rmSync(legacy,{force:true});}catch{await new Promise(r=>setTimeout(r,500));}
-  }
+  // v1.2.2: this no longer rewrites old WebP-Maker shortcuts or removes WebP-Maker.exe. On a Windows 10 computer the app was cut off hard about 3 seconds after every start,
+  // exactly when this step ran, and reading and writing shortcut files is the only native Windows call in the first seconds. The old WebP-Maker.exe, if it is still there,
+  // is harmless: it only hands over to this program. Shortcuts that point at it keep working.
+  crashLog.write('startup step','clean-up of old update files: start');
   // Remove previous-version backups and unused update copies left next to the app.
   const parent=path.dirname(INSTALL_DIR);
   let siblings=[];try{siblings=fs.readdirSync(parent,{withFileTypes:true});}catch{}
@@ -94,6 +75,7 @@ async function finishRename(){
   }
   const oldMarker=path.join(app.getPath('appData'),'WebP Maker','updates','pending-update.json');
   try{if(JSON.parse(fs.readFileSync(oldMarker,'utf8')).target===INSTALL_DIR)fs.rmSync(oldMarker,{force:true});}catch{}
+  crashLog.write('startup step','clean-up of old update files: done');
 }
 app.setName('Juicy Chat Creator Tools');
 // Crash log: a text file in the app's data folder that can be sent to the developer (header button: Crash log).
@@ -134,6 +116,8 @@ function launch(){
     icon,webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,webviewTag:false}});
   win.loadFile(path.join(__dirname,'renderer','index.html'));
   const wc=win.webContents;
+  wc.once('did-finish-load',()=>crashLog.write('startup step','window: page loaded'));
+  win.once('ready-to-show',()=>crashLog.write('startup step','window: shown'));
   wc.on('unresponsive',()=>crashLog.write('window stopped responding','the window is frozen or very busy'));
   wc.on('responsive',()=>crashLog.write('window responds again',''));
   wc.on('did-fail-load',(event,code,description,url)=>crashLog.write('window failed to load',`${description} (${code}) ${url}`));
@@ -158,6 +142,7 @@ function launch(){
   win.on('closed',()=>{win=null;});
 }
 app.whenReady().then(async()=>{
+  crashLog.write('startup step','app ready');
   if(!lock)return;
   maker=new WebpMaker({appRoot:__dirname,userData:app.getPath('userData'),onProgress:data=>send('webpmaker:progress',data)});
   intro=createIntroService({app,clipboard,dialog,onClose:()=>send('creator-tools:select-tab','webpmaker')});
@@ -231,10 +216,12 @@ app.whenReady().then(async()=>{
     const stage=await updater.prepare();await updater.launchInstaller(stage);
     quitting=true;app.quit();return {restarting:true};
   });
+  crashLog.write('startup step','window: creating');
   launch();
-  if(lastRunCrashed&&!E2E)setTimeout(()=>offerCrashLog('The last time you used the app, it did not close normally.'),2500).unref();
+  crashLog.write('startup step','window: created');
+  if(lastRunCrashed&&!E2E)setTimeout(()=>{crashLog.write('startup step','crash log offer: shown');offerCrashLog('The last time you used the app, it did not close normally.');},2500).unref();
   if(!E2E)setTimeout(()=>finishRename().catch(()=>{}),3000).unref();
-  if(!E2E){setTimeout(()=>updater.check({silent:true}),4500).unref();setInterval(()=>updater.check({silent:true}),6*60*60*1000).unref();}
+  if(!E2E){setTimeout(()=>{crashLog.write('startup step','update check: start');Promise.resolve(updater.check({silent:true})).catch(()=>{}).finally(()=>crashLog.write('startup step','update check: done'));},4500).unref();setInterval(()=>updater.check({silent:true}),6*60*60*1000).unref();}
   if(UPDATE_E2E)(async()=>{
     // Same steps as clicking Check for updates, then Update & Restart.
     await updater.check();if(!updater.available)throw Error('Update test: no update offered. '+updater.state.message);
