@@ -240,7 +240,7 @@ app.whenReady().then(async()=>{
   // Open a bot that was built somewhere else (.txt) and fill the sections from it
   ipcMain.handle('builder:openBot',async event=>{
     verifySender(event);
-    const picked=await dialog.showOpenDialog(win,{title:'Open a built bot (.txt)',properties:['openFile'],filters:[{name:'Built bot',extensions:['txt']}]});
+    const picked=await dialog.showOpenDialog(win,{title:'Open a built bot (.txt or .json)',properties:['openFile'],filters:[{name:'Built bot',extensions:['txt','json']}]});
     if(picked.canceled||!picked.filePaths||!picked.filePaths[0])return null;
     const file=picked.filePaths[0];if(fs.statSync(file).size>5e6)throw Error('That file is too large to be a bot (over 5 MB).');
     return {name:path.basename(file),text:fs.readFileSync(file,'utf8')};

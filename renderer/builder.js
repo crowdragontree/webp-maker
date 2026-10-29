@@ -437,23 +437,43 @@
   // ------------------------------------------------------------------ checks
   const len = s => (s || '').length;
   // copy one section's finished text. The Introduction is copied as the finished HTML when a saved Introduction style (or your edited HTML) is applied
-  // the finished bot as a .json file: every section the template has, as plain text, plus the optional Interaction Examples
+  // the finished bot as a .json file JuicyChat can import. v1.3.2: JuicyChat's upload only accepts the Pygmalion / Text generation layout (a TavernAI file and a
+  // TavernAI character card v2 were refused with "Unknown JSON Format Error" when tested), so the file has exactly its five fields and nothing else:
+  //   char_name = the bot's name (Scene name), char_persona = Personality, world_scenario = Scenario, char_greeting = Greeting, example_dialogue = Interaction Examples.
+  // The layout has no place for the Introduction or the Tags: those are pasted in JuicyChat as before (the .txt keeps the whole bot).
   function botJson() {
-    const spec = B.spec, v = B.v, c = compose(spec, v), S = c.sec, has = k => spec.order.includes(k), out = {};
-    out.format = 'JuicyChat bot (Bot Builder export)'; out.formatVersion = 1; out.exportedAt = new Date().toISOString(); out.template = spec.name || spec.id || '';
-    out.name = (v.names && v.names[1]) || ''; if (v.names && v.names[2]) out.name2 = v.names[2]; if (v.include3 && v.names && v.names[3]) out.name3 = v.names[3];
-    if (has('header')) { if (v.header.scene) out.sceneName = v.header.scene; if (v.header.age) out.age = v.header.age; }
-    if (has('introduction') && !spec.introduction.absent) out.introduction = S.introduction.body;
-    if (has('personality')) out.personality = S.personality.body;
-    if (has('scenario') && !spec.scenario.absent) out.scenario = S.scenario.body;
-    if (has('greeting')) { out.greeting = S.greeting.body; }
-    if (has('image') && S.image && S.image.body) out.imageGeneration = S.image.body;
-    if (has('tags')) out.tags = tagList(spec, v);
-    if (has('scene') && S.scene && S.scene.body) out.sceneBreakdown = spec.scene.freeform ? S.scene.body : v.scenes.map(x => ({name: x.name, shotAngle: x.shot, setting: x.setting, action: x.action}));
-    const ex = exOf(v), conv = exFilled(v, 'conv').map(r => ({user: String(r.user || '').trim(), character: String(r.char || '').trim()})), trig = exFilled(v, 'trig').map(r => ({trigger: String(r.trigger || '').trim(), response: String(r.response || '').trim()}));
-    if (conv.length || trig.length) out.interactionExamples = {conversations: conv, triggeredInteractions: trig};
-    out.characterCounts = {}; for (const k of ['introduction', 'personality', 'scenario', 'greeting']) if (out[k] != null) out.characterCounts[k] = k === 'greeting' ? S.greeting.prose.length : String(out[k]).length;
-    return JSON.stringify(out, null, 2);
+    const spec = B.spec, v = B.v, c = compose(spec, v), S = c.sec, has = k => spec.order.includes(k);
+    const name1 = (v.names && v.names[1]) || '', scene = has('header') ? (v.header.scene || '') : '';
+    const conv = exFilled(v, 'conv').map(r => ({user: String(r.user || '').trim(), character: String(r.char || '').trim()})), trig = exFilled(v, 'trig').map(r => ({trigger: String(r.trigger || '').trim(), response: String(r.response || '').trim()}));
+    const ex = [...conv.map(x => `<START>\n{{user}}: ${x.user}\n{{char}}: ${x.character}`), ...trig.map(x => `<START>\n{{user}}: ${x.trigger}\n{{char}}: ${x.response}`)].join('\n');
+    return JSON.stringify({
+      char_name: scene || name1 || 'Bot',
+      char_persona: has('personality') ? S.personality.body : '',
+      world_scenario: has('scenario') && !spec.scenario.absent ? S.scenario.body : '',
+      char_greeting: has('greeting') ? S.greeting.body : '',
+      example_dialogue: ex
+    }, null, 2);
+  }
+  // a .json bot opened again: this layout, a TavernAI card, or the older .json layout this app saved before v1.3.2
+  function parseJsonBot(raw) {
+    let o; try { o = JSON.parse(raw); } catch { return null; }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    const str = x => typeof x === 'string' ? x : '';
+    let out, pre = '';
+    if (typeof o.char_persona === 'string' || typeof o.char_greeting === 'string') {
+      out = {introduction: '', personality: str(o.char_persona), scenario: str(o.world_scenario), greeting: str(o.char_greeting), image: '', tags: '', scene: ''};
+      if (o.char_name) pre = `Scene Name: ${str(o.char_name)}`;
+    } else if (o.format && /bot builder export/i.test(o.format)) {
+      const sb = Array.isArray(o.sceneBreakdown) ? o.sceneBreakdown.map((x, i) => `Scene ${i + 1}: ${x.name || ''}\nShot Angle: ${x.shotAngle || ''}\nSetting: ${x.setting || ''}\nAction: ${x.action || ''}`).join('\n\n') : str(o.sceneBreakdown);
+      out = {introduction: str(o.introduction), personality: str(o.personality), scenario: str(o.scenario), greeting: str(o.greeting), image: str(o.imageGeneration), tags: (Array.isArray(o.tags) ? o.tags : []).join(', '), scene: sb};
+      pre = [o.name && `Name: ${str(o.name)}`, o.age && `Age: ${str(o.age)}`, o.sceneName && `Scene Name: ${str(o.sceneName)}`].filter(Boolean).join('\n');
+    } else {
+      const d = o.data && typeof o.data === 'object' ? o.data : o;
+      out = {introduction: str(d.creator_notes) || str(o.creatorcomment), personality: str(d.description) || str(d.personality), scenario: str(d.scenario), greeting: str(d.first_mes), image: '', tags: (Array.isArray(d.tags) ? d.tags : []).join(', '), scene: ''};
+      if (d.name) pre = `Scene Name: ${str(d.name)}`;
+    }
+    const found = ['introduction', 'personality', 'scenario', 'greeting', 'image', 'tags', 'scene'].filter(k => out[k].trim()).length;
+    return found ? {found, preamble: pre, ...out} : null;
   }
   async function copySection(key) {
     if (!B.spec || !B.v) return false;
@@ -707,6 +727,7 @@
     return chunks;
   }
   function parseBuiltBot(raw) {
+    if (/^\s*\{/.test(String(raw || ''))) { const j = parseJsonBot(raw); if (j) return j; }   // v1.3.2: a .json bot
     const count = c => ['introduction', 'personality', 'scenario', 'greeting', 'image', 'tags', 'scene'].filter(k => (c[k] || []).join('').trim()).length;
     let chunks = splitBuiltBot(raw, true);
     if (count(chunks) < 2) { const loose = splitBuiltBot(raw, false); if (count(loose) > count(chunks)) chunks = loose; }
