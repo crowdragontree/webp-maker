@@ -53,16 +53,19 @@
   function tenseFor(text) {
     const NT = root.NarrativeTense; if (!NT) return '';
     const core = root.__builderCore, v = core && core.state && core.state.v;
+    const ok = m => (m === 'past' || m === 'present' ? m : '');
     if (v && NT.chosen) {
       try {
+        // the Introduction / Greeting: the tense you pressed, else the one its Past / Present buttons show
         const c = NT.chosen(v), has = s => typeof s === 'string' && s.trim().length > 20 && (s.includes(text) || text.includes(s));
-        if (c.intro && [v.intro, v.over && v.over.introduction].some(has)) return c.intro;
-        if (c.greeting && [...(v.greet || []), v.over && v.over.greeting].some(has)) return c.greeting;
+        const shown = scope => { try { return ok(NT.status(v, scope).mode); } catch (_) { return ''; } };
+        if ([v.intro, v.over && v.over.introduction].some(has)) { const t = ok(c.intro) || shown('intro'); if (t) return t; }
+        if ([...(v.greet || []), v.over && v.over.greeting].some(has)) { const t = ok(c.greeting) || shown('greet'); if (t) return t; }
       } catch (_) { /* fall back to the text itself */ }
     }
     if (detected.has(text)) return detected.get(text);
-    let d = ''; try { d = NT.detect(text); } catch (_) { d = ''; }
-    d = d === 'past' || d === 'present' ? d : '';
+    // any other text: the tense most of its narration is in (a slip or a flashback does not make it "mixed")
+    let d = ''; try { d = ok(NT.detect(text)); if (!d) { const k = (NT.convert(text, 'past') || {}).counts || {}, p = k.past || 0, q = k.present || 0; d = p && p >= 2 * q ? 'past' : q && q >= 2 * p ? 'present' : ''; } } catch (_) { d = ''; }
     if (detected.size > 300) detected.clear(); detected.set(text, d); return d;
   }
 

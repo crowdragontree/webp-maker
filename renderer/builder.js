@@ -210,16 +210,21 @@
   const KEPT_KEY = 'jbs.textcheck.keptSentences', keptNorm = x => String(x || '').toLowerCase().replace(/[*_"“”‘’'\s]+/g, ' ').replace(/^[\s.,!?]+|[\s.,!?]+$/g, '').trim();
   function keptSet() { try { return new Set(JSON.parse(localStorage.getItem(KEPT_KEY) || '[]')); } catch (_) { return new Set(); } }
   function keepSentences(list) { try { const all = keptSet(); for (const x of list) { const n = keptNorm(x); if (n) all.add(n); } const arr = [...all]; localStorage.setItem(KEPT_KEY, JSON.stringify(arr.slice(-2000))); return true; } catch (_) { return false; } }
+  // v1.4.0: Ignore on a grammar suggestion: that suggestion in that sentence is not shown again (kept on this computer by the sentence's own words)
+  const IGNFIX_KEY = 'jbs.textcheck.ignoredFixes';
+  const fixKey = (text, h) => { const sr = sentenceRange(text, h); return keptNorm(text.slice(sr[0], sr[1])) + ' ¦ ' + String(text.slice(h.start, h.end)).toLowerCase().trim() + ' ¦ ' + String(h.fix == null ? '' : h.fix).toLowerCase().trim(); };
+  function ignoredFixes() { try { return new Set(JSON.parse(localStorage.getItem(IGNFIX_KEY) || '[]').map(k => String(k).replace(/[\u0000\uFFFD]/g, ' ¦ '))); } catch (_) { return new Set(); } }
+  function ignoreFix(key) { try { const all = ignoredFixes(); all.add(key); localStorage.setItem(IGNFIX_KEY, JSON.stringify([...all].slice(-3000))); return true; } catch (_) { return false; } }
   function wordItems() {
     const TC = window.TextCheck; if (!TC || !B.v || !B.spec) return [];
-    const kept = keptSet();
+    const kept = keptSet(), ignFix = ignoredFixes();
     const names = wordNames(), items = [], cache = B.wordCache || (B.wordCache = new Map());
     if (cache.size > 80) cache.clear();
     wordSources().forEach((s, si) => {
       const text = String(s.src.get() || '');
       if (!text || htmlIntro(text)) return;
       const key = names.join('|') + '\u0000' + text; let hits = cache.get(key); if (!hits) { hits = TC.check(text, {names}); cache.set(key, hits); }
-      hits.forEach(hit => { if (hit.kind === 'wording' && kept.size) { const sr = sentenceRange(text, hit); if (kept.has(keptNorm(text.slice(sr[0], sr[1])))) return; } items.push({id: `${si}:${hit.start}:${hit.kind}`, si, s, text, hit}); });
+      hits.forEach(hit => { if (hit.kind === 'grammar' && ignFix.size && ignFix.has(fixKey(text, hit))) return; if (hit.kind === 'wording' && kept.size) { const sr = sentenceRange(text, hit); if (kept.has(keptNorm(text.slice(sr[0], sr[1])))) return; } items.push({id: `${si}:${hit.start}:${hit.kind}`, si, s, text, hit}); });
     });
     return items;
   }
@@ -264,12 +269,12 @@
           return `<div class="bb-kw-item bb-word-item" data-row="${e(r.key)}"><p class="bb-word-h"><b>Wording</b> · ${e(x.s.label)}</p>${r.hits.map(k => `<p class="bb-word-msg">${e(k.msg)} ${ignBtn(x, k)}</p>`).join('')}<label class="micro">Rewrite the sentence here, or leave it as it is</label><textarea class="bb-in bb-word-edit" rows="${Math.min(6, Math.max(2, Math.ceil(sent.length / 80)))}" data-sent="${e(r.key)}" data-si="${x.si}" data-a="${r.sr[0]}" data-z="${r.sr[1]}" spellcheck="false">${e(sent)}</textarea></div>`;
         }
         const act = h.suggest && h.suggest.length ? `<label class="micro">Change to <select data-pick="${e(x.id)}"><option value="">Leave it</option>${h.suggest.map((sg, i) => `<option value="${e(sg)}"${i === 0 ? ' selected' : ''}>${e(sg)}</option>`).join('')}</select></label> ${addBtn(x)}`
-          : h.fix != null ? `<label class="bb-check"><input type="checkbox" data-id="${e(x.id)}"${h.src === 'languagetool' && h.kind === 'wording' ? '' : ' checked'}> ${h.kind === 'wording' ? 'Change it to' : 'Fix'}: ${e(h.fix.trim() === '' ? 'one space' : '“' + h.fix.trim() + '”')}</label> ${h.kind === 'spelling' ? '' : ignBtn(x, h)}`
+          : h.fix != null ? `<label class="bb-check"><input type="checkbox" data-id="${e(x.id)}"${h.src === 'languagetool' && h.kind === 'wording' ? '' : ' checked'}> ${h.kind === 'wording' ? 'Change it to' : 'Fix'}: ${e(h.fix.trim() === '' ? 'one space' : '“' + h.fix.trim() + '”')}</label> ${h.kind === 'spelling' ? '' : h.kind === 'grammar' ? `<button type="button" class="ghost sm" data-ignorefix="${e(fixKey(x.text, h))}" title="This suggestion is wrong: don't show it for this sentence again">Ignore</button>` : ignBtn(x, h)}`
           : h.kind === 'spelling' ? `<p class="micro">No close match. Fix it by hand, or ${addBtn(x)} if it is a name or a real word.</p>`
           : `<p class="micro">Edit this one by hand, or ${ignBtn(x, h)}</p>`;
         return `<div class="bb-kw-item bb-word-item" data-row="${e(x.id)}"><p class="bb-word-h"><b>${e(WORD_KIND[h.kind])}</b> · ${e(x.s.label)}</p><p class="bb-word-msg">${e(h.msg)}</p><pre>${wordCtx(x.text, h)}</pre>${act}</div>`;
       }).join('');
-      root.innerHTML = `<section class="upd-box sr-box" role="dialog" aria-modal="true" tabindex="-1"><header><h3>Spelling and Grammar</h3><p>${items.length} thing${items.length > 1 ? 's' : ''} found by the app's own checker, on this computer. Tick what you want fixed, or rewrite a sentence in its box. A sentence box you leave as it is is kept as written when you press Apply, and is not flagged again.</p></header><div class="sr-body">${rows}</div><footer><span class="micro">Nothing changes until you press the button.</span><div class="button-row"><button type="button" class="ghost" id="bb-word-close">Close</button><button type="button" class="primary" id="bb-word-use">Apply my changes</button></div></footer></section>`;
+      root.innerHTML = `<section class="upd-box sr-box" role="dialog" aria-modal="true" tabindex="-1"><header><h3>Spelling and Grammar</h3><p>${items.length} thing${items.length > 1 ? 's' : ''} found ${items.some(x => x.hit.src === 'gector') ? 'by the app\'s own checker and GECToR, on this computer: no credits' : items.some(x => x.hit.src === 'languagetool') ? 'by the app\'s own checker and LanguageTool, on this computer: no AI, no credits' : 'by the app\'s own checker, on this computer: no AI, no credits'}. Tick what you want fixed, or rewrite a sentence in its box. A sentence box you leave as it is is kept as written when you press Apply, and is not flagged again.</p></header><div class="sr-body">${rows}</div><footer><span class="micro">Nothing changes until you press the button.</span><div class="button-row"><button type="button" class="ghost" id="bb-word-close">Close</button><button type="button" class="primary" id="bb-word-use">Apply my changes</button></div></footer></section>`;
       document.body.appendChild(root);
       const done = v => { root.remove(); resolve(v); };
       root.querySelector('#bb-word-close').onclick = () => done(null);
@@ -278,7 +283,7 @@
         picks: Object.fromEntries([...root.querySelectorAll('select[data-pick]')].filter(s => s.value).map(s => [s.dataset.pick, s.value])),
         allSents: [...root.querySelectorAll('textarea[data-sent]')].map(t => ({si: +t.dataset.si, start: +t.dataset.a, end: +t.dataset.z, value: t.value, orig: t.defaultValue})),
         get sents() { return this.allSents.filter(t => t.value !== t.orig && t.value.trim()); }});
-      root.addEventListener('click', ev => { const b = ev.target.closest('[data-addword],[data-ignore]'); if (!b) return; const adding = b.hasAttribute('data-addword'); if (adding ? window.TextCheck.addWord(b.dataset.word) : window.TextCheck.ignorePhrase(b.dataset.word)) { B.wordCache = null; try { refresh(); } catch (_) { /* the Checks list follows the new dictionary at once */ } const msg = b.closest('.bb-word-msg'), row = b.closest('.bb-word-item'); if (msg) msg.remove(); if (row && !row.querySelector('.bb-word-msg') || (row && !msg)) row.remove(); toast(adding ? `“${b.dataset.word}” added to your dictionary.` : `“${b.dataset.word}” will not be flagged again.`); try { refresh(); } catch (_) { /* ignore */ } } });
+      root.addEventListener('click', ev => { const fb = ev.target.closest('[data-ignorefix]'); if (fb) { if (ignoreFix(fb.dataset.ignorefix)) { B.wordCache = null; const row = fb.closest('.bb-word-item'); if (row) row.remove(); toast('Ignored. This suggestion will not be shown for this sentence again.'); try { refresh(); } catch (_) { /* the Checks list follows */ } } return; } const b = ev.target.closest('[data-addword],[data-ignore]'); if (!b) return; const adding = b.hasAttribute('data-addword'); if (adding ? window.TextCheck.addWord(b.dataset.word) : window.TextCheck.ignorePhrase(b.dataset.word)) { B.wordCache = null; try { refresh(); } catch (_) { /* the Checks list follows the new dictionary at once */ } const msg = b.closest('.bb-word-msg'), row = b.closest('.bb-word-item'); if (msg) msg.remove(); if (row && !row.querySelector('.bb-word-msg') || (row && !msg)) row.remove(); toast(adding ? `“${b.dataset.word}” added to your dictionary.` : `“${b.dataset.word}” will not be flagged again.`); try { refresh(); } catch (_) { /* ignore */ } } });
       root.addEventListener('keydown', ev => { if (ev.key === 'Escape') done(null); }); root.querySelector('.sr-box').focus();
     });
   }
