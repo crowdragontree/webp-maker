@@ -363,6 +363,48 @@
     }
     return out.join('\n\n');
   }
+  // v1.3.3: Interaction Examples read back from a loaded bot, so Save as .json keeps them. Reads the app's own .txt layout
+  // ("Conversations:" / "Triggered Interactions:", "Example 1", "User:" / "Character:", "Trigger:" / "Response:") and the
+  // .json example_dialogue ("<START>", "{{user}}:" / "{{char}}:"). A reply can run over several lines. Returns {conv, trig}.
+  function exampleRows(text, names) {
+    const out = {conv: [], trig: []}, src = String(text || '').replace(/\r\n/g, '\n').trim(); if (!src) return out;
+    const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), own = (names || []).map(x => String(x || '').trim()).filter(x => x && x.length <= 40).map(esc);
+    const lab = alts => new RegExp('^\\s*[*_]{0,2}\\s*(?:' + alts + ')\\s*[*_]{0,2}\\s*:\\s*(?:(?:\\*\\*|__)(?=\\s|$))?[ \\t]?(.*)$', 'i');
+    const LABS = [['conv', 'user', lab('user|you|\\{\\{user\\}\\}|<user>')], ['conv', 'char', lab(['character', 'char', 'bot', '\\{\\{char\\}\\}', '<bot>', ...own].join('|'))], ['trig', 'trigger', lab('trigger')], ['trig', 'response', lab('response')]];
+    const A = {conv: 'user', trig: 'trigger'};
+    let cur = null, field = '';
+    const done = () => { if (cur) { const r = {}; for (const k of Object.keys(cur.f)) r[k] = cur.f[k].join('\n').replace(/\n{3,}/g, '\n\n').trim(); if (Object.values(r).some(Boolean)) out[cur.kind].push(r); } cur = null; field = ''; };
+    for (const line of src.split('\n')) {
+      const t = line.trim();
+      if (/^[#*_\s]*(?:conversations?|conversation examples?)[*_\s]*:?[*_\s]*$/i.test(t) || /^[#*_\s]*triggered interactions?[*_\s]*:?[*_\s]*$/i.test(t)) { done(); continue; }
+      if (/^(?:<start>|[#*_\s]*example\s*\d*[*_\s]*:?[*_\s]*|[-*_=]{3,})$/i.test(t)) { done(); continue; }
+      const hit = LABS.find(([, , re]) => re.test(line));
+      if (hit) {
+        const [kind, f, re] = hit, a = f === A[kind];
+        const filled = cur && Object.values(cur.f).some(x => x.join('').trim());
+        if (!cur || cur.kind !== kind || (a ? filled : (cur.f[f] && cur.f[f].join('').trim()))) { done(); cur = {kind, f: {}}; }
+        field = f; cur.f[f] = [line.match(re)[1]]; continue;
+      }
+      if (cur && field) cur.f[field].push(line);
+    }
+    done();
+    return {conv: out.conv.map(r => ({user: r.user || '', char: r.char || ''})), trig: out.trig.map(r => ({trigger: r.trigger || '', response: r.response || ''}))};
+  }
+  // v1.3.3: the Interaction Examples of a loaded .json bot: example_dialogue (what Save as .json writes), a TavernAI card's mes_example,
+  // or the lists the app's older .json layout kept
+  function jsonExamples(raw) {
+    let o; try { o = JSON.parse(raw); } catch { return {conv: [], trig: []}; }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return {conv: [], trig: []};
+    const str = x => typeof x === 'string' ? x : '', arr = x => Array.isArray(x) ? x : [], d = o.data && typeof o.data === 'object' ? o.data : o;
+    const ext = (d.extensions && d.extensions.juicy_blueprint) || {};
+    const box = [o.interactionExamples, ext.interactionExamples, o.examples, ext.examples].find(x => x && typeof x === 'object' && !Array.isArray(x));
+    if (box) {
+      const conv = arr(box.conversations || box.conv).map(r => ({user: str(r && r.user).trim(), char: str(r && (r.character || r.char)).trim()})).filter(r => r.user || r.char);
+      const trig = arr(box.triggeredInteractions || box.triggered || box.trig).map(r => ({trigger: str(r && r.trigger).trim(), response: str(r && r.response).trim()})).filter(r => r.trigger || r.response);
+      if (conv.length || trig.length) return {conv, trig};
+    }
+    return exampleRows(str(o.example_dialogue) || str(d.mes_example) || str(o.mes_example), [str(o.char_name), str(d.name)]);
+  }
   function exampleIssues(v) {
     const o = [];
     for (const kind of ['conv', 'trig']) {
@@ -705,6 +747,7 @@
     ['image', /^(image generation|image prompt|images?)$/i],
     ['tags', /^(tags)$/i],
     ['scene', /^(scene breakdown|scenes)$/i],
+    ['examples', /^(interaction examples|example dialogues?|example conversations?)$/i],   // v1.3.3: read back, so Save as .json keeps them
     ['header', /^(basics|header)$/i]
   ];
   // A heading is a section name on its own line with a colon ("Scenario:") or markdown hash. Only when a file has no such
@@ -727,13 +770,13 @@
     return chunks;
   }
   function parseBuiltBot(raw) {
-    if (/^\s*\{/.test(String(raw || ''))) { const j = parseJsonBot(raw); if (j) return j; }   // v1.3.2: a .json bot
+    if (/^\s*\{/.test(String(raw || ''))) { const j = parseJsonBot(raw); if (j) { j.examples = jsonExamples(raw); return j; } }   // v1.3.2: a .json bot
     const count = c => ['introduction', 'personality', 'scenario', 'greeting', 'image', 'tags', 'scene'].filter(k => (c[k] || []).join('').trim()).length;
     let chunks = splitBuiltBot(raw, true);
     if (count(chunks) < 2) { const loose = splitBuiltBot(raw, false); if (count(loose) > count(chunks)) chunks = loose; }
     const body = k => (chunks[k] || []).join('\n').trim();
     const found = count(chunks);
-    return {found, preamble: (chunks.preamble || []).concat(chunks.header || []).join('\n').trim(), introduction: body('introduction'), personality: body('personality'), scenario: body('scenario'), greeting: body('greeting'), image: body('image'), tags: body('tags'), scene: body('scene')};
+    return {found, preamble: (chunks.preamble || []).concat(chunks.header || []).join('\n').trim(), introduction: body('introduction'), personality: body('personality'), scenario: body('scenario'), greeting: body('greeting'), image: body('image'), tags: body('tags'), scene: body('scene'), examples: exampleRows(body('examples'), [fieldAfter((chunks.preamble || []).concat(chunks.header || []).join('\n'), 'Name')])};
   }
   function fieldAfter(text, label) {
     const lines = String(text || '').split('\n'), re = new RegExp('^' + label + '\\s*:\\s*(.*)$', 'i');
@@ -861,6 +904,8 @@
         if (action) B.v.scenes[i].action = action;
       });
     }
+    const ex = parsed.examples;   // v1.3.3: the bot's Interaction Examples come along, so they are in Copy, Save as .txt and Save as .json
+    if (ex && ((ex.conv || []).length || (ex.trig || []).length)) B.v.examples = {conv: ex.conv || [], trig: ex.trig || []};
     return notes;
   }
 
