@@ -46,7 +46,14 @@ contextBridge.exposeInMainWorld('juicyApp',{
   ltRemove:()=>ipcRenderer.invoke('lt:remove'),
   ltEnable:on=>ipcRenderer.invoke('lt:enable',!!on),
   ltCheck:text=>ipcRenderer.invoke('lt:check',text),
-  onLtProgress:fn=>ipcRenderer.on('lt:progress',(_event,x)=>fn(x))
+  onLtProgress:fn=>ipcRenderer.on('lt:progress',(_event,x)=>fn(x)),
+  // Grammar engine (GECToR, v1.4.0)
+  gectorStatus:()=>ipcRenderer.invoke('gector:status'),
+  gectorInstall:()=>ipcRenderer.invoke('gector:install'),
+  gectorRemove:()=>ipcRenderer.invoke('gector:remove'),
+  gectorEnable:on=>ipcRenderer.invoke('gector:enable',!!on),
+  gectorCheck:(text,opts)=>ipcRenderer.invoke('gector:check',text,opts||{}),
+  onGectorProgress:fn=>ipcRenderer.on('gector:progress',(_event,x)=>fn(x))
 });
 contextBridge.exposeInMainWorld('creatorTools',{
   introRequest:(action,args)=>ipcRenderer.invoke('creator-tools:intro',action,args),

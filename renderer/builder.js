@@ -231,10 +231,10 @@
     for (const x of items) (by[x.s.key] = by[x.s.key] || []).push(x);
     for (const k of Object.keys(by)) {
       const list = by[k], n = list.length, show = list.slice(0, 2).map(x => `“${x.text.slice(x.hit.start, x.hit.end).trim().slice(0, 40)}”`).join(', ');
-      (res[k] = res[k] || []).push(['warn', `Spelling and wording: ${n} thing${n > 1 ? 's' : ''} to look at (${show}${n > 2 ? ', …' : ''}). Open Checks > Spelling & wording to go through ${n > 1 ? 'them' : 'it'}.`]);
+      (res[k] = res[k] || []).push(['warn', `Spelling and Grammar: ${n} thing${n > 1 ? 's' : ''} to look at (${show}${n > 2 ? ', …' : ''}). Open Checks > Spelling & Grammar to go through ${n > 1 ? 'them' : 'it'}.`]);
     }
     B.wordCount = items.length;
-    const b = q('bb-spell'); if (b) b.textContent = items.length ? `Spelling & wording (${items.length})` : 'Spelling & wording ✓';
+    const b = q('bb-spell'); if (b) b.textContent = items.length ? `Spelling & Grammar (${items.length})` : 'Spelling & Grammar ✓';
   }
   function sentenceRange(t, h) {
     let a = h.start; while (a > 0 && !/[.!?\n]/.test(t[a - 1])) a--;
@@ -269,7 +269,7 @@
           : `<p class="micro">Edit this one by hand, or ${ignBtn(x, h)}</p>`;
         return `<div class="bb-kw-item bb-word-item" data-row="${e(x.id)}"><p class="bb-word-h"><b>${e(WORD_KIND[h.kind])}</b> · ${e(x.s.label)}</p><p class="bb-word-msg">${e(h.msg)}</p><pre>${wordCtx(x.text, h)}</pre>${act}</div>`;
       }).join('');
-      root.innerHTML = `<section class="upd-box sr-box" role="dialog" aria-modal="true" tabindex="-1"><header><h3>Spelling, grammar and wording</h3><p>${items.length} thing${items.length > 1 ? 's' : ''} found by the app's own checker, on this computer. Tick what you want fixed, or rewrite a sentence in its box. A sentence box you leave as it is is kept as written when you press Apply, and is not flagged again.</p></header><div class="sr-body">${rows}</div><footer><span class="micro">Nothing changes until you press the button.</span><div class="button-row"><button type="button" class="ghost" id="bb-word-close">Close</button><button type="button" class="primary" id="bb-word-use">Apply my changes</button></div></footer></section>`;
+      root.innerHTML = `<section class="upd-box sr-box" role="dialog" aria-modal="true" tabindex="-1"><header><h3>Spelling and Grammar</h3><p>${items.length} thing${items.length > 1 ? 's' : ''} found by the app's own checker, on this computer. Tick what you want fixed, or rewrite a sentence in its box. A sentence box you leave as it is is kept as written when you press Apply, and is not flagged again.</p></header><div class="sr-body">${rows}</div><footer><span class="micro">Nothing changes until you press the button.</span><div class="button-row"><button type="button" class="ghost" id="bb-word-close">Close</button><button type="button" class="primary" id="bb-word-use">Apply my changes</button></div></footer></section>`;
       document.body.appendChild(root);
       const done = v => { root.remove(); resolve(v); };
       root.querySelector('#bb-word-close').onclick = () => done(null);
@@ -288,7 +288,7 @@
     if (!items.length) { B.wordCache = null; try { refresh(); } catch (_) { /* bring the Checks list up to date */ } if (manual) toast('No spelling, grammar or wording problems found.'); return; }
     const v0 = B.v, r = await askWording(items);
     if (B.v === v0) { B.wordCache = null; try { refresh(); } catch (_) { /* the list matches what is on screen again */ } }
-    if (r && B.v !== v0) return toast('The bot changed while this window was open, so nothing was applied. Open Spelling & wording again.', true);
+    if (r && B.v !== v0) return toast('The bot changed while this window was open, so nothing was applied. Open Spelling & Grammar again.', true);
     if (!r) return;
     const by = new Map(); let n = 0;
     const keptAsIs = r.allSents.filter(t => t.value === t.orig || !t.value.trim()).map(t => t.orig), rewritten = r.sents.map(t => t.value.replace(/\s*\n\s*/g, ' ').trim());
@@ -390,7 +390,7 @@
     done();
     return {conv: out.conv.map(r => ({user: r.user || '', char: r.char || ''})), trig: out.trig.map(r => ({trigger: r.trigger || '', response: r.response || ''}))};
   }
-  // v1.3.3: the Interaction Examples of a loaded .json bot: example_dialogue (what Save as .json writes), a TavernAI card's mes_example,
+  // v1.3.3: the Interaction Examples of a loaded .json bot: example_dialogue (written by Save as .json before v1.4.0), a TavernAI card's mes_example,
   // or the lists the app's older .json layout kept
   function jsonExamples(raw) {
     let o; try { o = JSON.parse(raw); } catch { return {conv: [], trig: []}; }
@@ -481,19 +481,17 @@
   // copy one section's finished text. The Introduction is copied as the finished HTML when a saved Introduction style (or your edited HTML) is applied
   // the finished bot as a .json file JuicyChat can import. v1.3.2: JuicyChat's upload only accepts the Pygmalion / Text generation layout (a TavernAI file and a
   // TavernAI character card v2 were refused with "Unknown JSON Format Error" when tested), so the file has exactly its five fields and nothing else:
-  //   char_name = the bot's name (Scene name), char_persona = Personality, world_scenario = Scenario, char_greeting = Greeting, example_dialogue = Interaction Examples.
+  //   char_name = the bot's name (Scene name), char_persona = Personality, world_scenario = Scenario, char_greeting = Greeting, example_dialogue = empty (v1.4.0: JuicyChat does not import Interaction Examples).
   // The layout has no place for the Introduction or the Tags: those are pasted in JuicyChat as before (the .txt keeps the whole bot).
   function botJson() {
     const spec = B.spec, v = B.v, c = compose(spec, v), S = c.sec, has = k => spec.order.includes(k);
     const name1 = (v.names && v.names[1]) || '', scene = has('header') ? (v.header.scene || '') : '';
-    const conv = exFilled(v, 'conv').map(r => ({user: String(r.user || '').trim(), character: String(r.char || '').trim()})), trig = exFilled(v, 'trig').map(r => ({trigger: String(r.trigger || '').trim(), response: String(r.response || '').trim()}));
-    const ex = [...conv.map(x => `<START>\n{{user}}: ${x.user}\n{{char}}: ${x.character}`), ...trig.map(x => `<START>\n{{user}}: ${x.trigger}\n{{char}}: ${x.response}`)].join('\n');
     return JSON.stringify({
       char_name: scene || name1 || 'Bot',
       char_persona: has('personality') ? S.personality.body : '',
       world_scenario: has('scenario') && !spec.scenario.absent ? S.scenario.body : '',
       char_greeting: has('greeting') ? S.greeting.body : '',
-      example_dialogue: ex
+      example_dialogue: ''      // v1.4.0: always empty. JuicyChat does not import Interaction Examples, so they are not saved here (Copy and Save as .txt keep them)
     }, null, 2);
   }
   // a .json bot opened again: this layout, a TavernAI card, or the older .json layout this app saved before v1.3.2

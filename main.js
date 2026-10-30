@@ -39,6 +39,7 @@ const {CrashLog}=require('./lib/crashLog');
 const BotBuilder=require('./lib/botBuilder');
 const imageService=require('./lib/imageService');
 const LANGUAGETOOL=require('./lib/languagetool');
+const GECTOR=require('./lib/gector');
 // Started by the updater from the downloaded copy: install it, then exit.
 const FINISH_UPDATE=process.argv.find(a=>a.startsWith('--jcct-finish-update='));
 if(FINISH_UPDATE){
@@ -245,15 +246,21 @@ app.whenReady().then(async()=>{
     const file=picked.filePaths[0];if(fs.statSync(file).size>5e6)throw Error('That file is too large to be a bot (over 5 MB).');
     return {name:path.basename(file),text:fs.readFileSync(file,'utf8')};
   });
-  // ---- Grammar engine (LanguageTool): installed and run on this computer only
-  const LTM=LANGUAGETOOL.create({userData:app.getPath('userData')});
+  // ---- Grammar engine: LanguageTool (rules) or GECToR (v1.4.0, a small model), one at a time, installed and run on this computer only.
+  // Installing one removes the other once the new one has installed and passed its test.
+  const LTM=LANGUAGETOOL.create({userData:app.getPath('userData')}),GM=GECTOR.create({userData:app.getPath('userData')});
   const lt=fn=>async(event,...a)=>{verifySender(event);try{return await fn(...a);}catch(e){return {ok:false,error:String(e&&e.message||e)};}};
   ipcMain.handle('lt:status',lt(()=>({ok:true,...LTM.status()})));
-  ipcMain.handle('lt:install',lt(async()=>{await LTM.install(p=>send('lt:progress',p));return {ok:true,...LTM.status()};}));
+  ipcMain.handle('lt:install',lt(async()=>{await GM.stop();await LTM.install(p=>send('lt:progress',p));let removedOther=false;if(GM.status().root){await GM.remove();removedOther=true;}return {ok:true,...LTM.status(),removedOther};}));
   ipcMain.handle('lt:remove',lt(async()=>({ok:true,...(await LTM.remove())})));
   ipcMain.handle('lt:enable',lt(on=>({ok:true,...LTM.setEnabled(on)})));
   ipcMain.handle('lt:check',lt(text=>LTM.check(String(text||'').slice(0,20000))));
-  app.on('before-quit',()=>{try{LTM.stop();}catch{}});
+  ipcMain.handle('gector:status',lt(()=>({ok:true,...GM.status()})));
+  ipcMain.handle('gector:install',lt(async()=>{await LTM.stop();await GM.install(p=>send('gector:progress',p));let removedOther=false;if(LTM.status().root){await LTM.remove();removedOther=true;}return {ok:true,...GM.status(),removedOther};}));
+  ipcMain.handle('gector:remove',lt(async()=>({ok:true,...(await GM.remove())})));
+  ipcMain.handle('gector:enable',lt(on=>({ok:true,...GM.setEnabled(on)})));
+  ipcMain.handle('gector:check',lt((text,opts)=>GM.check(String(text||'').slice(0,20000),{tense:opts&&/^(past|present)$/.test(opts.tense)?opts.tense:''})));
+  app.on('before-quit',()=>{try{LTM.stop();}catch{}try{GM.stop();}catch{}});
   ipcMain.handle('creator-tools:copy',(event,text)=>{verifySender(event);clipboard.writeText(String(text==null?'':text).slice(0,2000000));return true;});
   let testRelease;
   if(UPDATE_E2E){
