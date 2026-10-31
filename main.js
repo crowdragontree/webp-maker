@@ -273,6 +273,7 @@ app.whenReady().then(async()=>{
   ipcMain.handle('localai:enable',lt(on=>({ok:true,...AM.setEnabled(on)})));
   ipcMain.handle('localai:check',lt((text,opts)=>AM.check(String(text||'').slice(0,20000),tenseOpt(opts))));
   ipcMain.handle('harper:status',lt(()=>({ok:true,...HM.status()})));
+  ipcMain.handle('harper:install',lt(()=>HM.ensure()));
   ipcMain.handle('harper:enable',lt(on=>({ok:true,...HM.setEnabled(on)})));
   ipcMain.handle('harper:check',lt(text=>HM.check(String(text||'').slice(0,20000))));
   app.on('before-quit',()=>{for(const m of [LTM,GM,AM,HM]){try{m.stop();}catch{}}});

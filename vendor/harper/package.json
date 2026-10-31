@@ -1,0 +1,6 @@
+{
+  "name": "harper-vendored",
+  "private": true,
+  "type": "module",
+  "description": "harper.js 2.13.0 (Automattic, Apache-2.0), only the files the app needs. BinaryModule: Windows path fix for loading the .wasm file."
+}

@@ -2,6 +2,7 @@
 
 ## New
 - **Harper, built in.** Automattic's free, open-source grammar checker ships inside the app and is on by default: spelling, capitalization, a / an, repeated words, agreement and other common slips, instantly, with nothing to install. Inside quoted dialogue it only checks spelling. It can be switched off in Settings > Grammar engine.
+  - If the app was built without Harper's files, it downloads them once (about 30 MB) the first time a check runs, or when you press **Get Harper now** in Settings > Grammar engine.
 - **The local AI, a third Grammar engine.** Settings > Grammar engine now offers **Install the local AI** next to LanguageTool and GECToR. It is an open model (Qwen3.5 9B, free) running on your computer through llama.cpp: no credits, no account, nothing sent anywhere.
   - It reads whole sentences and rewrites the broken or awkward ones ("You dated Sabine for five years and married for two of them"), fixes verbs in the wrong tense, and follows your Past / Present choice.
   - Every rewrite is a suggestion with Fix and Ignore. A rewrite that would change dialogue, a {{marker}}, a link or a picture is dropped.
