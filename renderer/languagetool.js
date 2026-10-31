@@ -178,7 +178,7 @@
   // which engine the checks use: the installed one that is switched on (the local AI first, then GECToR, then LanguageTool)
   function choose() {
     const on = s => !!(s && s.ok !== false && s.installed && s.enabled);
-    const want = ENGINES.find(k => on(st[k])) || '', h = !!(stH && stH.ok !== false && stH.available && stH.enabled);
+    const want = ENGINES.find(k => on(st[k])) || '', h = !!(stH && stH.ok !== false && stH.enabled);   // a missing Harper is fetched once by the first check
     if (want !== engine) { engine = want; ENG.tag++; ENG.reset(); }
     if (h !== harperOn) { harperOn = h; HAR.tag++; HAR.reset(); }
     setProv();
@@ -221,7 +221,10 @@
   function harperBox() {
     const s = stH, head = '<h4 class="ge-h" style="margin:14px 0 4px">Harper <span class="bb-local-badge">Built in</span></h4>';
     if (!s || s.ok === false && !s.error) return head + '<p class="micro">Not available here.</p>';
-    if (!s.available) return head + `<p class="micro" style="color:#ff8a8a">Harper is missing from the app folder. Reinstall the app to get it back.</p>`;
+    if (!s.available) {
+      if (s.fetching || working === 'harper') return head + '<p class="micro">Getting Harper (about 30 MB, once)…</p>';
+      return head + `<p class="micro">This copy of the app was built without Harper's files, so the app downloads them once (about 30 MB, from the npm registry) the first time a check runs.</p>${s.error ? `<p class="micro" style="color:#ff8a8a">${esc(s.error)}</p>` : ''}<div class="button-row"><button type="button" class="primary" data-ge="install" data-eng="harper">Get Harper now</button></div>`;
+    }
     const err = s.error ? `<p class="micro" style="color:#ff8a8a">${esc(s.error)}</p>` : '';
     return head + `<label class="bb-check"><input type="checkbox" data-ge-on="harper"${s.enabled ? ' checked' : ''}> Use Harper in the checks</label><p class="micro">${ABOUT.harper}</p>${testHtml(testMsg.harper)}${err}<div class="button-row"><button type="button" class="ghost" data-ge="test" data-eng="harper">Test it</button></div>`;
   }
@@ -254,6 +257,7 @@
     if (eng === 'harper') {
       if (what === 'on' || what === 'off') { await api.harperEnable(what === 'on'); return refresh(); }
       if (what === 'test') return runTest('harper');
+      if (what === 'install' && api.harperInstall) { working = 'harper'; paint(); try { const r = await api.harperInstall(); if (r && r.ok === false && stH) stH.error = r.error; else say('Harper is ready.'); } finally { working = ''; } return refresh(); }
       return;
     }
     eng = ENGINES.includes(eng) ? eng : 'lt';
