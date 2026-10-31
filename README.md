@@ -1,4 +1,4 @@
-# Juicy Chat Creator Tools v1.4.1
+# Juicy Chat Creator Tools v1.4.2
 
 **WebP Maker, Image Compressor, Bot Builder, Introduction Editor and Settings in a single Windows/Linux desktop app.**
 
@@ -20,7 +20,7 @@
 - 15,000-character limit; Copy Introduction to paste in JuicyChat, or Save and Return to the Bot Builder.
 
 ### Settings
-- Install or remove the Grammar Engine: LanguageTool or GECToR (one at a time).
+- Grammar checking: Harper is built in; install one Grammar Engine on top (LanguageTool, GECToR or the local AI).
 
 ## Building Windows / Linux releases
 
@@ -28,7 +28,7 @@
 2. Select **Actions → Build Juicy Chat Creator Tools (Windows and Linux)**.
 3. Both Windows and Linux jobs must pass all required source and actual MP4-to-WebP conversion tests.
 4. Download the generated artifacts. Extract the outer GitHub artifact ZIP and obtain `WebP-Maker-Windows-x64.zip` and `WebP-Maker-Linux-x64.zip`.
-5. Publish a **v1.4.1** release with those two inner ZIPs as release assets, using their existing filenames.
+5. Publish a **v1.4.2** release with those two inner ZIPs as release assets, using their existing filenames.
 
 **Compatibility:** The packaged executable remains `WebP-Maker.exe` / `WebP-Maker` solely to support existing WebP Maker installations using the GitHub automatic updater. The application window/title/taskbar name is **Juicy Chat Creator Tools**. Version 1.3.1 is higher than every earlier release. Do not rename the release asset ZIPs or the executable inside the build folders.
 

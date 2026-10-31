@@ -212,7 +212,7 @@
   function keepSentences(list) { try { const all = keptSet(); for (const x of list) { const n = keptNorm(x); if (n) all.add(n); } const arr = [...all]; localStorage.setItem(KEPT_KEY, JSON.stringify(arr.slice(-2000))); return true; } catch (_) { return false; } }
   // v1.4.0: Ignore on a grammar suggestion: that suggestion in that sentence is not shown again (kept on this computer by the sentence's own words)
   const IGNFIX_KEY = 'jbs.textcheck.ignoredFixes';
-  const fixKey = (text, h) => { const sr = sentenceRange(text, h); return keptNorm(text.slice(sr[0], sr[1])) + ' ¦ ' + String(text.slice(h.start, h.end)).toLowerCase().trim() + ' ¦ ' + String(h.fix == null ? '' : h.fix).toLowerCase().trim(); };
+  const fixKey = (text, h) => { const sr = sentenceRange(text, h); return keptNorm(text.slice(sr[0], sr[1])) + ' ¦ ' + String(text.slice(h.start, h.end)).toLowerCase().trim() + ' ¦ ' + String(h.src === 'localai' || h.fix == null ? '' : h.fix).toLowerCase().trim(); };   // v1.4.1: a local AI rewrite is ignored for its sentence, whatever wording the model picks next time
   function ignoredFixes() { try { return new Set(JSON.parse(localStorage.getItem(IGNFIX_KEY) || '[]').map(k => String(k).replace(/[\u0000\uFFFD]/g, ' ¦ '))); } catch (_) { return new Set(); } }
   function ignoreFix(key) { try { const all = ignoredFixes(); all.add(key); localStorage.setItem(IGNFIX_KEY, JSON.stringify([...all].slice(-3000))); return true; } catch (_) { return false; } }
   function wordItems() {
@@ -262,19 +262,34 @@
           if (!g) rowsData.push(g = {key, sent: true, x, sr, hits: []}); g.hits.push(h);
         } else rowsData.push({key: x.id, x});
       }
+      // v1.4.2: every sentence with a finding can be rewritten in your own words; Harper and the Grammar engine check your version as you type
+      const sentKeys = new Set(rowsData.filter(r => r.sent).map(r => r.key)), ownDone = new Set();
+      const ownBox = (x, h) => {
+        const sr = sentenceRange(x.text, h), skey = `${x.si}:${sr[0]}`, sent = x.text.slice(sr[0], sr[1]);
+        if (h.src === 'localai' || sentKeys.has(skey) || !sent.trim()) return '';                   // a local AI rewrite is edited in its own box
+        if (ownDone.has(skey)) return '<p class="micro">To write your own version of this sentence, use its box above.</p>';
+        ownDone.add(skey);
+        return `<details class="bb-own"${h.src === 'localai' ? ' open' : ''}><summary class="micro" style="cursor:pointer">Write your own version of this sentence</summary><textarea class="bb-in bb-word-edit" rows="${Math.min(6, Math.max(2, Math.ceil(sent.length / 80)))}" data-own="${e(skey)}" data-si="${x.si}" data-a="${sr[0]}" data-z="${sr[1]}" spellcheck="false">${e(sent)}</textarea><div class="micro bb-own-live" aria-live="polite"></div></details>`;
+      };
       const rows = rowsData.map(r => {
         const x = r.x, h = x.hit;
         if (r.sent) {
           const sent = x.text.slice(r.sr[0], r.sr[1]);
-          return `<div class="bb-kw-item bb-word-item" data-row="${e(r.key)}"><p class="bb-word-h"><b>Wording</b> · ${e(x.s.label)}</p>${r.hits.map(k => `<p class="bb-word-msg">${e(k.msg)} ${ignBtn(x, k)}</p>`).join('')}<label class="micro">Rewrite the sentence here, or leave it as it is</label><textarea class="bb-in bb-word-edit" rows="${Math.min(6, Math.max(2, Math.ceil(sent.length / 80)))}" data-sent="${e(r.key)}" data-si="${x.si}" data-a="${r.sr[0]}" data-z="${r.sr[1]}" spellcheck="false">${e(sent)}</textarea></div>`;
+          return `<div class="bb-kw-item bb-word-item" data-row="${e(r.key)}"><p class="bb-word-h"><b>Wording</b> · ${e(x.s.label)}</p>${r.hits.map(k => `<p class="bb-word-msg">${e(k.msg)} ${ignBtn(x, k)}</p>`).join('')}<label class="micro">Rewrite the sentence here, or leave it as it is</label><textarea class="bb-in bb-word-edit" rows="${Math.min(6, Math.max(2, Math.ceil(sent.length / 80)))}" data-sent="${e(r.key)}" data-si="${x.si}" data-a="${r.sr[0]}" data-z="${r.sr[1]}" spellcheck="false">${e(sent)}</textarea><div class="micro bb-own-live" aria-live="polite"></div></div>`;
         }
         const act = h.suggest && h.suggest.length ? `<label class="micro">Change to <select data-pick="${e(x.id)}"><option value="">Leave it</option>${h.suggest.map((sg, i) => `<option value="${e(sg)}"${i === 0 ? ' selected' : ''}>${e(sg)}</option>`).join('')}</select></label> ${addBtn(x)}`
-          : h.fix != null ? `<label class="bb-check"><input type="checkbox" data-id="${e(x.id)}"${h.src === 'languagetool' && h.kind === 'wording' ? '' : ' checked'}> ${h.kind === 'wording' ? 'Change it to' : 'Fix'}: ${e(h.fix.trim() === '' ? 'one space' : '“' + h.fix.trim() + '”')}</label> ${h.kind === 'spelling' ? '' : h.kind === 'grammar' ? `<button type="button" class="ghost sm" data-ignorefix="${e(fixKey(x.text, h))}" title="This suggestion is wrong: don't show it for this sentence again">Ignore</button>` : ignBtn(x, h)}`
+          : h.fix != null ? (() => {
+              // v1.4.2: the suggestion itself can be edited before it goes in (a local AI rewrite in a box, a word fix in a small field)
+              const on = h.src === 'languagetool' && h.kind === 'wording' ? '' : ' checked', btns = h.kind === 'spelling' ? '' : h.kind === 'grammar' ? `<button type="button" class="ghost sm" data-ignorefix="${e(fixKey(x.text, h))}" title="This suggestion is wrong: don't show it for this sentence again">Ignore</button>` : ignBtn(x, h);
+              if (h.src === 'localai') return `<label class="bb-check"><input type="checkbox" data-id="${e(x.id)}"${on}> Use this rewrite (edit it first if you like; it is checked again as you type):</label><textarea class="bb-in bb-word-edit" rows="${Math.min(6, Math.max(2, Math.ceil(h.fix.length / 80)))}" data-fixval="${e(x.id)}" data-si="${x.si}" spellcheck="false">${e(h.fix)}</textarea><div class="micro bb-own-live" aria-live="polite"></div>${btns}`;
+              if (h.fix.trim() === '') return `<label class="bb-check"><input type="checkbox" data-id="${e(x.id)}"${on}> ${h.kind === 'wording' ? 'Change it to' : 'Fix'}: one space</label> ${btns}`;
+              return `<label class="bb-check"><input type="checkbox" data-id="${e(x.id)}"${on}> ${h.kind === 'wording' ? 'Change it to' : 'Fix'}:</label> <input type="text" class="bb-in" data-fixval="${e(x.id)}" value="${e(h.fix)}" size="${Math.min(70, Math.max(8, h.fix.length + 3))}" style="width:auto;max-width:100%;display:inline-block" spellcheck="false"> ${btns}`;
+            })()
           : h.kind === 'spelling' ? `<p class="micro">No close match. Fix it by hand, or ${addBtn(x)} if it is a name or a real word.</p>`
           : `<p class="micro">Edit this one by hand, or ${ignBtn(x, h)}</p>`;
-        return `<div class="bb-kw-item bb-word-item" data-row="${e(x.id)}"><p class="bb-word-h"><b>${e(WORD_KIND[h.kind])}</b> · ${e(x.s.label)}</p><p class="bb-word-msg">${e(h.msg)}</p><pre>${wordCtx(x.text, h)}</pre>${act}</div>`;
+        return `<div class="bb-kw-item bb-word-item" data-row="${e(x.id)}"><p class="bb-word-h"><b>${e(WORD_KIND[h.kind])}</b> · ${e(x.s.label)}</p><p class="bb-word-msg">${e(h.msg)}</p><pre>${wordCtx(x.text, h)}</pre>${act}${ownBox(x, h)}</div>`;
       }).join('');
-      root.innerHTML = `<section class="upd-box sr-box" role="dialog" aria-modal="true" tabindex="-1"><header><h3>Spelling and Grammar</h3><p>${items.length} thing${items.length > 1 ? 's' : ''} found ${items.some(x => x.hit.src === 'gector') ? 'by the app\'s own checker and GECToR, on this computer: no credits' : items.some(x => x.hit.src === 'languagetool') ? 'by the app\'s own checker and LanguageTool, on this computer: no AI, no credits' : 'by the app\'s own checker, on this computer: no AI, no credits'}. Tick what you want fixed, or rewrite a sentence in its box. A sentence box you leave as it is is kept as written when you press Apply, and is not flagged again.</p></header><div class="sr-body">${rows}</div><footer><span class="micro">Nothing changes until you press the button.</span><div class="button-row"><button type="button" class="ghost" id="bb-word-close">Close</button><button type="button" class="primary" id="bb-word-use">Apply my changes</button></div></footer></section>`;
+      root.innerHTML = `<section class="upd-box sr-box" role="dialog" aria-modal="true" tabindex="-1"><header><h3>Spelling and Grammar</h3><p>${items.length} thing${items.length > 1 ? 's' : ''} found by ${['the app\'s own checker', ...[['harper', 'Harper'], ['languagetool', 'LanguageTool'], ['gector', 'GECToR'], ['localai', 'the local AI']].filter(([k]) => items.some(x => x.hit.src === k)).map(([, n]) => n)].join(', ').replace(/, ([^,]*)$/, ' and $1')}, on this computer: no credits. Tick what you want fixed. You can edit any suggestion before it goes in, or write your own version of a sentence in its box; rewrites are checked again as you type. A sentence box you leave as it is is kept as written when you press Apply, and is not flagged again.</p></header><div class="sr-body">${rows}</div><footer><span class="micro">Nothing changes until you press the button.</span><div class="button-row"><button type="button" class="ghost" id="bb-word-close">Close</button><button type="button" class="primary" id="bb-word-use">Apply my changes</button></div></footer></section>`;
       document.body.appendChild(root);
       const done = v => { root.remove(); resolve(v); };
       root.querySelector('#bb-word-close').onclick = () => done(null);
@@ -282,8 +297,41 @@
         ids: [...root.querySelectorAll('input[type=checkbox]:checked')].map(c => c.dataset.id),
         picks: Object.fromEntries([...root.querySelectorAll('select[data-pick]')].filter(s => s.value).map(s => [s.dataset.pick, s.value])),
         allSents: [...root.querySelectorAll('textarea[data-sent]')].map(t => ({si: +t.dataset.si, start: +t.dataset.a, end: +t.dataset.z, value: t.value, orig: t.defaultValue})),
-        get sents() { return this.allSents.filter(t => t.value !== t.orig && t.value.trim()); }});
-      root.addEventListener('click', ev => { const fb = ev.target.closest('[data-ignorefix]'); if (fb) { if (ignoreFix(fb.dataset.ignorefix)) { B.wordCache = null; const row = fb.closest('.bb-word-item'); if (row) row.remove(); toast('Ignored. This suggestion will not be shown for this sentence again.'); try { refresh(); } catch (_) { /* the Checks list follows */ } } return; } const b = ev.target.closest('[data-addword],[data-ignore]'); if (!b) return; const adding = b.hasAttribute('data-addword'); if (adding ? window.TextCheck.addWord(b.dataset.word) : window.TextCheck.ignorePhrase(b.dataset.word)) { B.wordCache = null; try { refresh(); } catch (_) { /* the Checks list follows the new dictionary at once */ } const msg = b.closest('.bb-word-msg'), row = b.closest('.bb-word-item'); if (msg) msg.remove(); if (row && !row.querySelector('.bb-word-msg') || (row && !msg)) row.remove(); toast(adding ? `“${b.dataset.word}” added to your dictionary.` : `“${b.dataset.word}” will not be flagged again.`); try { refresh(); } catch (_) { /* ignore */ } } });
+        fixes: Object.fromEntries([...root.querySelectorAll('[data-fixval]')].map(i => [i.dataset.fixval, i.value])),
+        owns: [...root.querySelectorAll('textarea[data-own]')].map(t => ({si: +t.dataset.si, start: +t.dataset.a, end: +t.dataset.z, value: t.value, orig: t.defaultValue})),
+        get sents() { return [...this.allSents, ...this.owns].filter(t => t.value !== t.orig && t.value.trim()); }});
+      // your own version, checked as you type: the fixes inside that sentence are unticked (your version replaces them), and what the
+      // built-in check, Harper and the Grammar engine find in your version is listed under the box with a Use button
+      const byId = new Map(items.map(x => [x.id, x])), ctxOf = si => { const x = items.find(i => i.si === si); return x ? x.text : ''; }, names = Object.values((B.v && B.v.names) || {}), liveT = new WeakMap();
+      const runLive = t => {
+        const box = t.parentElement && t.parentElement.querySelector('.bb-own-live'); if (!box) return;
+        const val = t.value;
+        if (val === t.defaultValue || !val.trim() || !window.LT || !window.LT.checkNow) { box.innerHTML = ''; return; }
+        box.innerHTML = '<p>Checking your version…</p>';
+        window.LT.checkNow(val, {text: ctxOf(+t.dataset.si), names}, (hits, waiting) => {
+          if (t.value !== val || !root.isConnected) return;
+          box._hits = hits;
+          const list = hits.map((h, i) => [h, i]).filter(([h]) => h.fix != null || (h.suggest && h.suggest.length));
+          const wait = waiting.length ? `<p>${e(waiting.join(' and '))} ${waiting.length > 1 ? 'are' : 'is'} still reading your version…</p>` : '';
+          box.innerHTML = (list.length ? `<p>In your version:</p><ul style="margin:2px 0 6px 18px;padding:0">${list.map(([h, i]) => `<li>“${e(val.slice(h.start, h.end))}” → “${e(h.fix != null ? h.fix : h.suggest[0])}” <button type="button" class="ghost sm" data-use="${i}">Use</button> <span style="opacity:.75">${e(h.msg)}</span></li>`).join('')}</ul>` : (waiting.length ? '' : '<p>Nothing found in your version.</p>')) + wait;
+        });
+      };
+      root.addEventListener('input', ev => {
+        const fv = ev.target.closest && ev.target.closest('[data-fixval]');
+        if (fv) {                                                                              // editing a suggestion means you want it (as edited)
+          const c = [...root.querySelectorAll('input[type=checkbox][data-id]')].find(k => k.dataset.id === fv.dataset.fixval); if (c) c.checked = true;
+          if (fv.tagName === 'TEXTAREA') { clearTimeout(liveT.get(fv)); liveT.set(fv, setTimeout(() => runLive(fv), 700)); }
+          return;
+        }
+        const t = ev.target.closest && ev.target.closest('textarea[data-own], textarea[data-sent]'); if (!t) return;
+        const si = +t.dataset.si, a = +t.dataset.a, z = +t.dataset.z, changed = t.value !== t.defaultValue;
+        for (const c of root.querySelectorAll('input[type=checkbox][data-id]')) {
+          const x = byId.get(c.dataset.id); if (!x || x.si !== si || x.hit.start < a || x.hit.end > z) continue;
+          if (changed) { if (!c.dataset.was) c.dataset.was = c.checked ? '1' : '0'; c.checked = false; } else if (c.dataset.was) { c.checked = c.dataset.was === '1'; delete c.dataset.was; }
+        }
+        clearTimeout(liveT.get(t)); liveT.set(t, setTimeout(() => runLive(t), 700));
+      });
+      root.addEventListener('click', ev => { const ub = ev.target.closest('[data-use]'); if (ub) { const box = ub.closest('.bb-own-live'), t = box && box.parentElement.querySelector('textarea'), h = box && box._hits && box._hits[+ub.dataset.use]; if (t && h) { t.value = window.TextCheck.apply(t.value, [{start: h.start, end: h.end, replacement: h.fix != null ? h.fix : h.suggest[0]}]); t.dispatchEvent(new Event('input', {bubbles: true})); t.focus(); } return; } const fb = ev.target.closest('[data-ignorefix]'); if (fb) { if (ignoreFix(fb.dataset.ignorefix)) { B.wordCache = null; const row = fb.closest('.bb-word-item'); if (row) row.remove(); toast('Ignored. This suggestion will not be shown for this sentence again.'); try { refresh(); } catch (_) { /* the Checks list follows */ } } return; } const b = ev.target.closest('[data-addword],[data-ignore]'); if (!b) return; const adding = b.hasAttribute('data-addword'); if (adding ? window.TextCheck.addWord(b.dataset.word) : window.TextCheck.ignorePhrase(b.dataset.word)) { B.wordCache = null; try { refresh(); } catch (_) { /* the Checks list follows the new dictionary at once */ } const msg = b.closest('.bb-word-msg'), row = b.closest('.bb-word-item'); if (msg) msg.remove(); if (row && !row.querySelector('.bb-word-msg') || (row && !msg)) row.remove(); toast(adding ? `“${b.dataset.word}” added to your dictionary.` : `“${b.dataset.word}” will not be flagged again.`); try { refresh(); } catch (_) { /* ignore */ } } });
       root.addEventListener('keydown', ev => { if (ev.key === 'Escape') done(null); }); root.querySelector('.sr-box').focus();
     });
   }
@@ -299,7 +347,8 @@
     const keptAsIs = r.allSents.filter(t => t.value === t.orig || !t.value.trim()).map(t => t.orig), rewritten = r.sents.map(t => t.value.replace(/\s*\n\s*/g, ' ').trim());
     const group = (x) => { if (!by.has(x.si)) by.set(x.si, {s: x.s, text: x.text, picks: []}); return by.get(x.si); };
     for (const x of items) {
-      const rep = r.picks[x.id] != null ? r.picks[x.id] : (r.ids.includes(x.id) && x.hit.fix != null ? x.hit.fix : null);
+      const edited = r.fixes && r.fixes[x.id] != null ? (x.hit.src === 'localai' ? r.fixes[x.id].replace(/\s*\n\s*/g, ' ').trim() : r.fixes[x.id]) : null;
+      const rep = r.picks[x.id] != null ? r.picks[x.id] : (r.ids.includes(x.id) && x.hit.fix != null ? (edited != null && (edited !== '' || x.hit.fix.trim() === '') ? edited : x.hit.fix) : null);   // a suggestion you edited goes in as edited
       if (rep == null || r.sents.some(t => t.si === x.si && x.hit.start >= t.start && x.hit.end <= t.end)) continue;     // a sentence you rewrote by hand replaces any small fix inside it
       group(x).picks.push({start: x.hit.start, end: x.hit.end, replacement: rep});
     }

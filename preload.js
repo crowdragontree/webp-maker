@@ -53,7 +53,17 @@ contextBridge.exposeInMainWorld('juicyApp',{
   gectorRemove:()=>ipcRenderer.invoke('gector:remove'),
   gectorEnable:on=>ipcRenderer.invoke('gector:enable',!!on),
   gectorCheck:(text,opts)=>ipcRenderer.invoke('gector:check',text,opts||{}),
-  onGectorProgress:fn=>ipcRenderer.on('gector:progress',(_event,x)=>fn(x))
+  onGectorProgress:fn=>ipcRenderer.on('gector:progress',(_event,x)=>fn(x)),
+  // Local AI and Harper (v1.4.1)
+  localaiStatus:()=>ipcRenderer.invoke('localai:status'),
+  localaiInstall:()=>ipcRenderer.invoke('localai:install'),
+  localaiRemove:()=>ipcRenderer.invoke('localai:remove'),
+  localaiEnable:on=>ipcRenderer.invoke('localai:enable',!!on),
+  localaiCheck:(text,opts)=>ipcRenderer.invoke('localai:check',text,opts||{}),
+  onLocalaiProgress:fn=>ipcRenderer.on('localai:progress',(_event,x)=>fn(x)),
+  harperStatus:()=>ipcRenderer.invoke('harper:status'),
+  harperEnable:on=>ipcRenderer.invoke('harper:enable',!!on),
+  harperCheck:text=>ipcRenderer.invoke('harper:check',text)
 });
 contextBridge.exposeInMainWorld('creatorTools',{
   introRequest:(action,args)=>ipcRenderer.invoke('creator-tools:intro',action,args),
