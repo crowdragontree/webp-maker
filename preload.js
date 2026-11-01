@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('juicyApp',{
   localaiEnable:on=>ipcRenderer.invoke('localai:enable',!!on),
   localaiCheck:(text,opts)=>ipcRenderer.invoke('localai:check',text,opts||{}),
   onLocalaiProgress:fn=>ipcRenderer.on('localai:progress',(_event,x)=>fn(x)),
+  onLocalaiActivity:fn=>ipcRenderer.on('localai:activity',(_event,x)=>fn(x)),
   harperStatus:()=>ipcRenderer.invoke('harper:status'),
   harperEnable:on=>ipcRenderer.invoke('harper:enable',!!on),
   harperInstall:()=>ipcRenderer.invoke('harper:install'),

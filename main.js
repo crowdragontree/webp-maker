@@ -251,7 +251,7 @@ app.whenReady().then(async()=>{
   // ---- Grammar checking (v1.4.1): Harper is built in (vendor/harper). On top of it one Grammar engine: LanguageTool (rules), GECToR (a small
   // model) or the local AI (Qwen3.5 9B through llama.cpp), installed and run on this computer only. Installing one removes the others once
   // the new one has installed and passed its test.
-  const LTM=LANGUAGETOOL.create({userData:app.getPath('userData')}),GM=GECTOR.create({userData:app.getPath('userData')}),AM=LOCALAI.create({userData:app.getPath('userData')}),HM=HARPER.create({appDir:__dirname,userData:app.getPath('userData')});
+  const LTM=LANGUAGETOOL.create({userData:app.getPath('userData')}),GM=GECTOR.create({userData:app.getPath('userData')}),AM=LOCALAI.create({userData:app.getPath('userData'),onActivity:a=>send('localai:activity',a)}),HM=HARPER.create({appDir:__dirname,userData:app.getPath('userData')});
   const lt=fn=>async(event,...a)=>{verifySender(event);try{return await fn(...a);}catch(e){return {ok:false,error:String(e&&e.message||e)};}};
   const ENGINES={lt:[LTM,'LanguageTool'],gector:[GM,'GECToR'],localai:[AM,'the local AI']};
   const removeOthers=async keep=>{const gone=[];for(const [k,[m,name]] of Object.entries(ENGINES))if(k!==keep&&m.status().root){await m.remove();gone.push(name);}return gone.join(' and ');};
