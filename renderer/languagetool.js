@@ -147,12 +147,16 @@
   const HAR = makeSource('Harper', (key, text) => api.harperCheck(text), (text, matches) => convertHarper(text, matches, mask(text)));
   HAR.failed = why => { if (stH) stH.error = why; harperOn = false; setProv(); paint(); };
 
+  // An AI engine (the local AI, GECToR) is the one that reads the sentence: while it is on, Harper's grammar and wording suggestions are not shown, so the two
+  // never argue over the same words (Harper used to undo a fix the AI had just made, "every one" back to "everyone"). Harper's spelling and doubled-word flags stay.
+  const harperStays = x => !(engine === 'localai' || engine === 'gector') || x.kind === 'spelling' || x.rule === 'HARPER_Repetition';
+
   function provider(text) {
     if (!text || (!engine && !harperOn)) return null;
     const e = engine ? ENG.get(engine + '\u0001' + (engine === 'lt' ? '' : tenseFor(text)) + '\u0000' + text, text) : [];
     const h = harperOn ? HAR.get(text, text) : [];
     if (e === null && h === null) return null;
-    const ee = e || [], hh = (h || []).filter(x => x.kind === 'spelling' || !ee.some(y => y.kind !== 'spelling' && x.start < y.end && y.start < x.end));   // the engine wins where both found something
+    const ee = e || [], hh = (h || []).filter(x => harperStays(x) && (x.kind === 'spelling' || !ee.some(y => y.kind !== 'spelling' && x.start < y.end && y.start < x.end)));   // the engine wins where both found something
     return [...ee, ...hh];
   }
   // Your own version of a sentence, checked as you type in the Spelling & Grammar window: the built-in check at once, Harper a moment later,
@@ -163,7 +167,7 @@
     const src = String(text || ''), tense = tenseFor(ctx.text || src), got = {builtin: [], harper: [], engine: []}, waiting = new Set();
     try { got.builtin = ((root.TextCheck && root.TextCheck.check(src, {names: ctx.names || []})) || []).filter(h => !h.src); } catch (_) { got.builtin = []; }
     const emit = () => {
-      const ee = got.engine, hh = got.harper.filter(x => x.kind === 'spelling' || !ee.some(y => y.kind !== 'spelling' && x.start < y.end && y.start < x.end));
+      const ee = got.engine, hh = got.harper.filter(x => harperStays(x) && (x.kind === 'spelling' || !ee.some(y => y.kind !== 'spelling' && x.start < y.end && y.start < x.end)));
       const bb = got.builtin.filter(x => ![...ee, ...hh].some(y => x.start < y.end && y.start < x.end && (y.kind === x.kind || x.kind === 'grammar')));
       try { onUpdate([...ee, ...hh, ...bb].sort((a, b) => a.start - b.start), [...waiting]); } catch (_) { /* the window was closed */ }
     };
