@@ -12,7 +12,7 @@
     'wm-error','wm-result','wm-preview','wm-preview-placeholder','wm-result-size','wm-size-bar','wm-result-details','wm-result-note','wm-save','wm-expand','wm-fullscreen','wm-fullscreen-image','wm-fullscreen-close'];
   if(!ids.every(id=>$(id))||!api?.webpBegin||!api?.webpFrame||!api?.webpFinish||!geometry||!timeline)return;
   const MAX_FRAMES=1500;
-  const MAX_BYTES=9990000;
+  const MAX_BYTES=10475274; // 9.99 MB counted like Windows and ezgif (1 MB = 1,048,576 bytes)
   let clips=[];
   let clipInstanceSerial=0;
   let converting=false;
@@ -29,7 +29,7 @@
   const crossfadeSeconds=()=>crossfadeOn()?Number($o('wm-crossfade-seconds')?.value):0;
   // how long a clip is on screen: a video or an animated WebP for its own length, a picture for "Seconds per image"
   const clipSeconds=clip=>clip.kind==='image'?imageSeconds():clip.duration;
-  const formatBytes=b=>b>=1e6?(b/1e6).toFixed(2)+' MB':(b/1e3).toFixed(0)+' KB';
+  const formatBytes=b=>b>=1048576?(b/1048576).toFixed(2)+' MB':(b/1024).toFixed(0)+' KB';
   const webpNav=document.querySelector('.nav-btn[data-view="webpmaker"]');
   function navStatus(mode){
     if(!webpNav)return;
@@ -572,7 +572,7 @@
   // The badge next to the size: green "Under 9.99 MB", or red "Over 9.99 MB" for the too-big file that is kept after a failed conversion.
   function setBadge(over,bytes){
     const b=document.getElementById('wm-result-badge');if(!b)return;
-    b.textContent=over?`Over 9.99 MB by ${((bytes-MAX_BYTES)/1e6).toFixed(2)} MB`:'Under 9.99 MB';
+    b.textContent=over?`Over 9.99 MB by ${((bytes-MAX_BYTES)/1048576).toFixed(2)} MB`:'Under 9.99 MB';
     b.style.background=over?'#4a1d24':'';b.style.color=over?'#ffb3bd':'';
   }
   // A failed conversion keeps its closest too-big file: it is shown here (with its real size) so it can be looked at and saved with right-click > Save image as.

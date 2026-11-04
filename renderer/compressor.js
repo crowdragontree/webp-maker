@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   const base = f => String(f || '').split(/[\\/]/).pop();
-  const size = n => n >= 1e6 ? (n / 1e6).toFixed(2) + ' MB' : n >= 1e3 ? Math.round(n / 1e3) + ' KB' : n + ' bytes';
+  const size = n => n >= 1048576 ? (n / 1048576).toFixed(2) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' bytes';
   const LABEL = {lossless: 'LOSSLESS', near: 'NEAR-LOSSLESS', colors: '256 COLOURS', resized: 'SCALED DOWN'};
   let rows = [], busy = false;
 
