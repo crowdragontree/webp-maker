@@ -1,7 +1,7 @@
 {
   "name": "juicy-chat-creator-tools",
   "productName": "Juicy Chat Creator Tools",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "private": true,
   "description": "Juicy Chat Creator Tools: WebP Maker, Image Compressor, Bot Builder, Introduction Editor and Settings",
   "main": "main.js",
