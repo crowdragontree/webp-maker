@@ -490,8 +490,48 @@
       if(complete%5===0||complete===total)progress({title:'Preparing frames',detail:`${complete} of ${total} frames captured at ${width} × ${height}.`,percent:5+Math.floor(49*complete/total)});
     }
   }
-  async function convert(){
+  // When a method cannot get under 9.99 MB, a pop-up offers the next one in this order; Proceed starts it right away. Every
+  // method after the first starts over at 24 FPS / Q80 (or the frame rate the videos were decoded at, if that is lower) and
+  // runs the same FPS / quality steps on the frames already decoded from the MP4s: nothing is decoded again.
+  const STAGES=[
+    {method:'standard',name:'Standard encoding'},
+    {method:'grain',name:'Grain reduction',about:'Smooths fine grain and noise in every frame (ImageMagick -enhance) before it is encoded, so the same quality takes fewer bytes. Edges are kept; very fine grain is softened.'},
+    {method:'motion',name:'Motion-timed frames',about:'Keeps every frame at full quality, but where the picture barely changes it shows a frame a little longer instead of the next one: up to a third of the frames in each clip, never two in a row. Busy moments keep their frame rate; calm stretches play at a lower one. The length stays the same.'},
+    {method:'quality',name:'Lower quality',about:'Keeps every frame and lets quality go below 75, down to 40, in the same 5-point steps. Motion stays smooth, but fine detail and textures get softer.'}
+  ];
+  let lastSourceFps=0;   // the frame rate the cached frames were decoded at
+  const stageFps=()=>Math.max(19,Math.min(24,lastSourceFps||24));
+  // The pop-up after a method fails: names the next method; resolves true for Proceed, false for Cancel / Escape.
+  function askNextStage(stage,next,message){
+    return new Promise(resolve=>{
+      const back=document.createElement('div');
+      back.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(8,4,14,.62);display:flex;align-items:center;justify-content:center;padding:20px';
+      const box=document.createElement('div');box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');
+      box.style.cssText='width:100%;max-width:520px;background:#1a1224;border:1px solid #5b3b78;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.6);padding:20px 22px;color:#f3e8fb;font:14px/1.5 system-ui,sans-serif';
+      const para=(text,css)=>{const p=document.createElement('p');p.textContent=text;p.style.cssText='margin:0 0 10px;'+(css||'');return p;};
+      const title=document.createElement('h3');title.textContent=`${STAGES[stage].name} couldn't get under 9.99 MB`;
+      title.style.cssText='margin:0 0 10px;font-size:17px';box.setAttribute('aria-label',title.textContent);
+      box.append(title);
+      const found=message.match(/the file is ([\d.]+ MB) at (\d+) FPS and quality (\d+)/);
+      if(found)box.append(para(`Its last try was ${found[1]} at ${found[2]} FPS / quality ${found[3]}, the lowest this method goes.`,'color:#d9c6ea'));
+      box.append(para(`Next: ${next.name}`,'font-weight:700;margin-bottom:4px'),para(next.about),
+        para(`It starts over at ${stageFps()} FPS / quality 80 and goes down the same steps, using the frames already decoded from your videos (no video decoding).`,'color:#d9c6ea'));
+      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:flex-end;gap:10px;margin-top:16px';
+      const button=(text,primary)=>{const b=document.createElement('button');b.type='button';b.textContent=text;
+        b.style.cssText='border-radius:8px;padding:8px 16px;cursor:pointer;font:600 14px system-ui,sans-serif;'+(primary?'background:#7b4bb0;color:#fff;border:1px solid #9d6fd3':'background:transparent;color:#f3e8fb;border:1px solid #5b3b78');return b;};
+      const cancel=button('Cancel',false),proceed=button('Proceed',true);
+      row.append(cancel,proceed);box.append(row);back.append(box);document.body.append(back);
+      const done=go=>{document.removeEventListener('keydown',key,true);back.remove();resolve(go);};
+      const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(false);}};
+      document.addEventListener('keydown',key,true);
+      cancel.onclick=()=>done(false);proceed.onclick=()=>done(true);
+      proceed.focus();
+    });
+  }
+  async function convert(stageArg){
     if(converting||clips.length===0)return;
+    const stage=Number.isInteger(stageArg)?stageArg:0;   // a click on Convert passes an event: that is the first method
+    let nextStage=0;
     dismissNotice();clearError();clearResult();navStatus('idle');
     let width,height,fps,quality,crop,position;
     try{
@@ -500,10 +540,11 @@
       crop=$('wm-crop').value;position=$('wm-crop-position').value;
       if(!Number.isInteger(fps)||fps<19||fps>60)throw new Error('Choose a frame rate from 19 to 60 FPS.');
       if(!Number.isInteger(quality)||quality<50||quality>99)throw new Error('Choose a quality from 50 to 99.');
+      if(stage>0){fps=stageFps();quality=80;}
       const original=clips[0];
-      if((width!==original.width||height!==original.height)&&!window.confirm(`Change output dimensions from ${original.width} × ${original.height} to ${width} × ${height}?\n\nWebP Maker will never change them automatically.`))return;
+      if(stage===0&&(width!==original.width||height!==original.height)&&!window.confirm(`Change output dimensions from ${original.width} × ${original.height} to ${width} × ${height}?\n\nWebP Maker will never change them automatically.`))return;
       const mismatched=clips.filter(c=>c.width!==width||c.height!==height);
-      if(crop==='fit'&&mismatched.length&&width===original.width&&height===original.height&&
+      if(stage===0&&crop==='fit'&&mismatched.length&&width===original.width&&height===original.height&&
         !window.confirm('Some clips have different dimensions. They will be fitted into the first video\'s frame without stretching or cropping. Continue?'))return;
       if(clips.some(c=>c.kind==='image')&&!(imageSeconds()>=0.25&&imageSeconds()<=60))throw new Error('Seconds per image must be from 0.25 to 60.');
       const fade=crossfadeSeconds();
@@ -520,7 +561,7 @@
       if(expectedFrames>MAX_FRAMES)throw new Error(`That frame rate would create ${expectedFrames} frames. Choose a lower FPS (${MAX_FRAMES} maximum) or use shorter clips.`);
       if(width>4096||height>4096)throw new Error('Output dimensions must be 4096 pixels or smaller on each side.');
       cancelled=false;busy(true);navStatus('running');$('wm-progress-wrap').hidden=false;
-      progress({title:'Starting conversion',detail:'Reading your clips on this computer. No FFmpeg and no uploads.',percent:0});
+      progress({title:stage?STAGES[stage].name:'Starting conversion',detail:stage?`Starting over at ${fps} FPS / quality ${quality} with the frames already decoded from your videos.`:'Reading your clips on this computer. No FFmpeg and no uploads.',percent:0});
       // Source IDs include the clip order. Cached frames are never reused for
       // different videos, a different order, or a different output size.
       const cropModes=['fit','16:9','9:16','3:4','4:3','1:1','fill','freeform'];
@@ -532,7 +573,8 @@
       // Numeric IDs only: the backend uses numeric validation for frame keys.
       // the cross-fade and the seconds per picture change the frames, so they are part of the key (whole milliseconds: the backend wants numbers only)
       const sourceKey=[...clips.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections,Math.round(framePlan.crossfade*1000),clips.some(c=>c.kind==='image')?Math.round(imageSeconds()*1000):0].join(',');
-      const prepared=await api.webpBegin({width,height,fps,quality,expectedFrames,clipFrames:counts,sourceKey});
+      const prepared=await api.webpBegin({width,height,fps,quality,expectedFrames,clipFrames:counts,sourceKey,method:STAGES[stage].method});
+      lastSourceFps=prepared.sourceFps||fps;
       if(prepared.cached){
         progress({title:'Reusing decoded video frames',detail:`${prepared.cachedFrames} lossless frames already captured at ${prepared.sourceFps} FPS. No new video decoding.`,percent:54});
       }else{
@@ -552,12 +594,13 @@
       overShown=false;setBadge(false);
       $('wm-size-bar').style.width=`${Math.min(100,100*result.bytes/MAX_BYTES).toFixed(2)}%`;
       const details=$('wm-result-details');details.replaceChildren();
-      for(const [k,value] of [['Quality',result.sceneQualities?result.sceneQualities.map((q,i)=>`Clip ${i+1}: ${q}`).join(' · '):result.quality],['Resolution',`${result.width} × ${result.height}`],['Framing',crop==='fit'?'Fit':crop==='freeform'?'Freeform (per clip)':`Crop (${crop==='fill'?'custom':crop})`],['Frame rate',`${result.fps} FPS`],['Duration',`${result.duration}s`],['Frames',result.frames]]){
+      for(const [k,value] of [['Method',result.methodLabel||STAGES[stage].name],['Quality',result.sceneQualities?result.sceneQualities.map((q,i)=>`Clip ${i+1}: ${q}`).join(' · '):result.quality],['Resolution',`${result.width} × ${result.height}`],['Framing',crop==='fit'?'Fit':crop==='freeform'?'Freeform (per clip)':`Crop (${crop==='fill'?'custom':crop})`],['Frame rate',result.method==='motion'?`${result.fps} FPS, motion-timed (${result.averageFps} average)`:`${result.fps} FPS`],['Duration',`${result.duration}s`],['Frames',result.frames]]){
         const el=document.createElement('div'),title=document.createElement('span'),desc=document.createElement('strong');
         title.textContent=k;desc.textContent=String(value);el.append(title,desc);details.append(el);
       }
       const adaptive=Array.isArray(result.sceneQualities)&&result.sceneQualities.length>1;
       const adjustments=[];
+      if(stage>0)adjustments.push(`${STAGES[stage].name}, started over at ${fps} FPS / Q${quality}`);
       if(result.fps!==fps)adjustments.push(`FPS ${fps} → ${result.fps}`);
       if(adaptive)adjustments.push(`Adaptive quality: ${result.sceneQualities.map((q,i)=>`${clips[i]?.name||'Clip '+(i+1)} Q${q}`).join(', ')}`);
       else if(result.quality!==quality)adjustments.push(`Quality ${quality} → ${result.quality}`);
@@ -566,8 +609,16 @@
       ready=true;
       progress({title:'Conversion complete',detail:'Animated WebP ready to preview and save.',percent:100});
       navStatus('complete');notify('complete');
-    }catch(e){if(!cancelled){const message=String(e?.message||e||'');error(message.includes('still exceeds 9.99 MB')?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':e);if(message.includes('still exceeds 9.99 MB'))await showOversize();navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}}}
+    }catch(e){if(!cancelled){
+      const message=String(e?.message||e||''),over=message.includes('still exceeds 9.99 MB');
+      const next=over&&stage+1<STAGES.length?STAGES[stage+1]:null;
+      error(over&&!next?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':over?message:e);
+      if(over)await showOversize();
+      navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}
+      if(next&&await askNextStage(stage,next,message))nextStage=stage+1;
+    }}
     finally{if(cancelled)navStatus('idle');busy(false);render();}
+    if(nextStage)return convert(nextStage);
   }
   // The badge next to the size: green "Under 9.99 MB", or red "Over 9.99 MB" for the too-big file that is kept after a failed conversion.
   function setBadge(over,bytes){
