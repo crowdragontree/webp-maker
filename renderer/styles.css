@@ -1602,3 +1602,57 @@ ul.bp-lines ins,.bp-changes p ins{background:rgba(127,217,154,.16);color:#a5f0bd
 @keyframes lai-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 body.bg-on .lai-act{bottom:150px}
 .toast.show~.lai-act{bottom:90px}
+
+/* ---------------------------------------------------------------- v1.6.0 / v1.5.0: Search, and marks inside text boxes */
+.ts-btn{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;margin-right:10px;border-radius:9px;border:1px solid #49304f;background:#1a1322;color:#e6d6ee;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+.ts-btn span{font-size:16px;line-height:1}
+.ts-btn:hover{border-color:#aa5fc1;background:#241830;color:#fff}
+.jcct-header .ts-btn{margin:0 0 0 auto}
+.ts-modal{position:fixed;inset:0;z-index:100002;background:rgba(8,4,14,.66);display:flex;align-items:flex-start;justify-content:center;padding:7vh 20px 20px}
+.ts-modal[hidden]{display:none}
+.ts-box{width:min(940px,96vw);max-height:84vh;display:flex;flex-direction:column;background:#120c18;border:1px solid #3a2a46;border-radius:14px;box-shadow:0 22px 60px rgba(0,0,0,.65);overflow:hidden}
+.ts-top{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #2a1f33}
+.ts-icon{font-size:20px;color:#c9a3dc}
+.ts-input{flex:1;min-width:0;background:#0d0912;border:1px solid #3a2a46;border-radius:9px;color:#f3e8fb;font-size:15px;padding:10px 12px;outline:none}
+.ts-input:focus{border-color:#8a5fb0}
+.ts-close{background:transparent;border:1px solid #3a2a46;color:#cdb8da;border-radius:8px;padding:6px 10px;cursor:pointer}
+.ts-close:hover{color:#fff;border-color:#8a5fb0}
+.ts-hint{padding:8px 16px 0;font-size:12px;color:#9e88ad}
+.ts-hint b{color:#d9c3e6;font-weight:700}
+.ts-count{padding:8px 16px 6px;font-size:12px;color:#b9a3c8;font-weight:700}
+.ts-list{overflow:auto;padding:4px 12px 14px;display:flex;flex-direction:column;gap:9px}
+.ts-res{background:#191120;border:1px solid #2d2238;border-radius:10px;padding:11px 14px 10px;cursor:pointer}
+.ts-res:hover,.ts-res.active{border-color:#7b52a0;background:#1e1428}
+.ts-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:7px}
+.ts-title{color:#fff;font-size:14px;font-weight:800}
+.ts-where{color:#9a86a8;font-size:11.5px}
+.ts-chip{font-size:11px;color:#a9c6ff;border:1px solid #3d6fd1;background:rgba(61,111,209,.14);border-radius:999px;padding:1px 9px}
+.ts-snip{margin:0;font-family:Consolas,"Cascadia Mono",Menlo,monospace;font-size:12px;line-height:1.55;color:#ddd2e6;white-space:pre-wrap;word-break:break-word}
+.ts-res mark,.ts-title mark{background:rgba(74,128,255,.26);color:#fff;border-bottom:2px solid #4f8dff;border-radius:2px;padding:0 1px}
+::highlight(ts-hit){background-color:rgba(74,128,255,.38);color:#fff}
+
+/* the see-through copy laid over a text box: only its marks show */
+.tm-ov{position:absolute;pointer-events:none;overflow:hidden;color:transparent!important;background:transparent!important;-webkit-text-fill-color:transparent;margin:0;box-shadow:none;outline:none}
+.tm-ov .tm-m{color:transparent;border-radius:2px;text-decoration-skip-ink:none}
+.tm-ov .tm-search{background:rgba(74,128,255,.34);box-shadow:0 2px 0 #4f8dff}
+.tm-ov .tm-bad{background:rgba(255,64,90,.34);box-shadow:0 2px 0 #ff4f6a}
+.tm-ov .tm-warn{background:rgba(255,196,48,.34);box-shadow:0 2px 0 #f5c542}
+.tm-ov .tm-spell{background:rgba(255,92,112,.16);text-decoration:underline wavy #ff5c70;text-underline-offset:3px}
+.tm-ov .tm-gram{background:rgba(78,161,255,.16);text-decoration:underline wavy #4ea1ff;text-underline-offset:3px}
+.tm-ov .tm-word{background:rgba(196,140,255,.14);text-decoration:underline dotted #c48cff;text-underline-offset:3px}
+.tm-flash{animation:tmFlash 1.6s ease-out 1}
+.tm-flash-bad{outline:2px solid #ff4f6a;outline-offset:3px;border-radius:8px}
+.tm-flash-warn{outline:2px solid #f5c542;outline-offset:3px;border-radius:8px}
+@keyframes tmFlash{0%{box-shadow:0 0 0 3px rgba(79,141,255,.85)}100%{box-shadow:0 0 0 3px rgba(79,141,255,0)}}
+
+/* Checks: a click goes to the problem; Copy copies the check */
+.bb-issue[data-sec]{cursor:pointer}.bb-issue:not([data-sec]){cursor:default}
+.bb-issue .bb-issue-acts{display:inline-flex;gap:6px;margin-left:8px;vertical-align:middle}
+.bb-issue .bb-issue-acts .bb-goto{margin-left:0}
+/* spelling and grammar colours in the Greeting and the Introduction */
+.tm-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11.5px;color:#b9a6c6;margin:2px 0 8px}
+.tm-legend span{display:inline-flex;align-items:center;gap:5px}
+.tm-legend i{display:inline-block;width:22px;height:8px;border-radius:2px}
+.tm-legend .lg-spell{background:rgba(255,92,112,.35);border-bottom:2px solid #ff5c70}
+.tm-legend .lg-gram{background:rgba(78,161,255,.35);border-bottom:2px solid #4ea1ff}
+.tm-legend .lg-word{background:rgba(196,140,255,.3);border-bottom:2px dotted #c48cff}

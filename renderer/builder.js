@@ -182,6 +182,39 @@
     else (v.greet || []).forEach((_, i) => out.push({label: many ? `Greeting, passage ${i + 1}` : 'Greeting', get: () => v.greet[i] || '', set: t => { v.greet[i] = t; (v.touched = v.touched || {})['g' + i] = true; if (v.gAuto) v.gAuto[i] = null; }}));
     return out;
   }
+  // v1.6.0: a check in the Checks list opens its section and marks the words it is about (its quoted text, or the punctuation it names)
+  function gotoIssue(b) {
+    if (!b || !b.dataset.sec) return;
+    const d = document.querySelector(`#bb-form .bb-sec[data-sec="${b.dataset.sec}"]`); if (!d) return;
+    d.open = true;
+    const lvl = b.classList.contains('bad') ? 'bad' : 'warn';
+    if (window.TextMarks) window.TextMarks.showIssue(d, b.dataset.msg || '', lvl); else d.scrollIntoView({block: 'start', behavior: 'smooth'});
+  }
+  // v1.6.0: spelling, grammar and wording marks in the Greeting and the Introduction, each kind in its own colour (the same findings as Check wording)
+  function paintLangMarks() {
+    const TM = window.TextMarks, TC = window.TextCheck; if (!TM || !TC || !B.v || !B.spec) return;
+    let names = []; try { names = wordNames(); } catch (_) { names = []; }
+    const ign = ignoredFixes(), kept = keptSet(), cache = B.wordCache || (B.wordCache = new Map());
+    if (cache.size > 80) cache.clear();
+    for (const sec of document.querySelectorAll('#bb-form .bb-sec[data-sec="greeting"], #bb-form .bb-sec[data-sec="introduction"]')) {
+      const boxes = [...sec.querySelectorAll('textarea')];
+      if (boxes.length && !sec.querySelector('.tm-legend')) {
+        const at = boxes[0].closest('.bb-md, label, .bb-field') || boxes[0], lg = document.createElement('div');
+        lg.className = 'tm-legend'; lg.innerHTML = '<span><i class="lg-spell"></i>Spelling</span><span><i class="lg-gram"></i>Grammar</span><span><i class="lg-word"></i>Wording</span>';
+        if (at.parentElement) at.parentElement.insertBefore(lg, at);
+      }
+      for (const ta of boxes) {
+        const text = String(ta.value || '');
+        if (!text.trim() || htmlIntro(text)) { TM.set(ta, 'lang', []); continue; }
+        const key = names.join('|') + '\u0000' + text; let hits = cache.get(key);
+        if (!hits) { try { hits = TC.check(text, {names}); } catch (_) { hits = []; } cache.set(key, hits); }
+        const show = hits.filter(h => !(h.kind === 'grammar' && ign.size && ign.has(fixKey(text, h))) && !(h.kind === 'wording' && kept.size && (() => { const sr = sentenceRange(text, h); return kept.has(keptNorm(text.slice(sr[0], sr[1]))); })()));
+        TM.set(ta, 'lang', show.map(h => ({start: h.start, end: h.end, cls: h.kind === 'spelling' ? 'tm-spell' : h.kind === 'grammar' ? 'tm-gram' : 'tm-word'})));
+      }
+    }
+  }
+  // v1.6.0: the Search pop-up finds the bot's tags
+  window.__bbSearchTags = () => { try { return B.spec && B.v ? tagList(B.spec, B.v) : []; } catch (_) { return []; } };
   async function copyCheck(el, text) {
     try { const sel = window.getSelection && window.getSelection(); if (sel && String(sel).trim() && el.contains(sel.anchorNode)) return; } catch (_) { /* ignore */ }
     const t = String(text || '').trim(); if (!t) return;
@@ -1206,10 +1239,10 @@
     sb.title = issues.length ? (open ? 'Click to hide the list' : 'Click to see what needs fixing') : '';
     sb.setAttribute('role', issues.length ? 'button' : 'status'); sb.tabIndex = issues.length ? 0 : -1;
     const il = q('bb-issues');
-    if (il) { il.hidden = !open; il.innerHTML = open ? issues.map(x => `<div class="bb-issue ${x.lvl}" role="button" tabindex="0" title="Click to copy this text" data-copy="${e((x.k ? (SEC_TITLE[x.k] || x.k) : 'Whole bot') + ': ' + x.m)}" ${x.k ? `data-sec="${x.k}"` : ''}><b>${x.lvl === 'bad' ? '!' : '•'} ${x.k ? e(SEC_TITLE[x.k] || x.k) : 'Whole bot'}</b>${e(x.m)}${x.k ? '<button type="button" class="bb-goto" data-goto title="Jump to this section">Go to section ›</button>' : ''}</div>`).join('') : ''; }
+    if (il) { il.hidden = !open; il.innerHTML = open ? issues.map(x => `<div class="bb-issue ${x.lvl}" role="button" tabindex="0" title="${x.k ? 'Click to go to this section, with the problem marked' : 'Copy copies this check'}" data-copy="${e((x.k ? (SEC_TITLE[x.k] || x.k) : 'Whole bot') + ': ' + x.m)}" data-msg="${e(x.m)}" ${x.k ? `data-sec="${x.k}"` : ''}><b>${x.lvl === 'bad' ? '!' : '•'} ${x.k ? e(SEC_TITLE[x.k] || x.k) : 'Whole bot'}</b>${e(x.m)}<span class="bb-issue-acts">${x.k ? '<button type="button" class="bb-goto" data-sec-goto title="Go to this section, with the problem marked">Go to section ›</button>' : ''}<button type="button" class="bb-goto bb-copy" data-check-copy title="Copy this check">Copy</button></span></div>`).join('') : ''; }
     B.last = c;
     q('bb-full').textContent = c.full;
-    markEmpty(); renderTense();
+    markEmpty(); renderTense(); paintLangMarks();
   }
   function flushPendingSave() {
     clearTimeout(B.saveT);
@@ -1351,8 +1384,9 @@
       const toggle = () => { if (!sb.classList.contains('bb-status-click')) return; const open = il && !il.hidden; B.issuesOpen = !open; refresh(); };
       sb.onclick = toggle; sb.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } };
       // clicking a check copies its text (drag over it to copy only part); "Go to section" jumps to the section it is about
-      if (il) il.onclick = ev => { const b = ev.target.closest('.bb-issue'); if (!b) return; if (ev.target.closest('[data-goto]')) { if (!b.dataset.sec) return; const d = document.querySelector(`#bb-form .bb-sec[data-sec="${b.dataset.sec}"]`); if (d) { d.open = true; d.scrollIntoView({block: 'start', behavior: 'smooth'}); } return; } copyCheck(b, b.dataset.copy); };
-      if (il) il.onkeydown = ev => { if (ev.key !== 'Enter' && ev.key !== ' ') return; const b = ev.target.closest('.bb-issue'); if (!b || ev.target !== b) return; ev.preventDefault(); copyCheck(b, b.dataset.copy); }; }
+      // a click on a check (or Go to section) opens its section with the problem marked: red for a thing to fix, yellow for a note. Copy copies the check.
+      if (il) il.onclick = ev => { const b = ev.target.closest('.bb-issue'); if (!b) return; if (ev.target.closest('[data-check-copy]')) { copyCheck(b, b.dataset.copy); return; } const sel = window.getSelection && window.getSelection(); if (!ev.target.closest('[data-sec-goto]') && sel && String(sel).trim() && b.contains(sel.anchorNode)) return; gotoIssue(b); };
+      if (il) il.onkeydown = ev => { if (ev.key !== 'Enter' && ev.key !== ' ') return; const b = ev.target.closest('.bb-issue'); if (!b || ev.target !== b) return; ev.preventDefault(); gotoIssue(b); }; }
     // the other check lines (under each section, the totals) copy their text the same way
     if (!window.__bbCopyChecks) { window.__bbCopyChecks = true; document.addEventListener('click', ev => { const li = ev.target.closest && ev.target.closest('.bb-checks li, .bb-total > div'); if (!li || ev.target.closest('button, a, input, select')) return; copyCheck(li, li.textContent.replace(/^\s*[✓!•]\s*/, '').trim()); }); }
     { const sp = q('bb-spell'); if (sp) sp.onclick = () => { if (needSpec()) offerWording(true); }; }
