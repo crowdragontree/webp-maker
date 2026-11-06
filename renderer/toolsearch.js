@@ -24,7 +24,7 @@
         go: id => { if (window.CreatorHost && typeof window.CreatorHost.switchTo === 'function') window.CreatorHost.switchTo(id); },
         current: () => { const v = document.querySelector('.jcct-main > .view.active'); return v ? v.id.replace(/^view-/, '') : ''; },
         mount: btn => { const h = document.querySelector('.jcct-header'); if (h) h.appendChild(btn); },
-        skip: '#view-introduction'                    // the Introduction Editor is a separate page inside a frame
+        skip: '#view-introduction, #view-analytics'  // the Introduction Editor and the Analytics tab are separate pages inside a frame
       };
     }
     return {

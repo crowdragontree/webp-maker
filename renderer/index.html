@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; frame-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; frame-src 'self' file:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Juicy Chat Creator Tools</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="creator-tools.css">
@@ -12,13 +12,14 @@
   <header class="jcct-header" role="banner">
     <div class="jcct-identity"><div class="jcct-mark" aria-hidden="true">JC</div>
       <div class="jcct-brand"><strong>Juicy Chat Creator Tools</strong><small>Write the bot, design the Introduction, make the pictures. One private workspace.</small></div>
-      <span id="jcct-version" class="jcct-version" aria-label="Installed application version">v1.5.0</span>
+      <span id="jcct-version" class="jcct-version" aria-label="Installed application version">v1.5.1</span>
     </div>
     <nav class="jcct-tabs" aria-label="Creator tools">
       <button type="button" class="nav-btn active" data-view="webpmaker" data-tab="webpmaker" aria-selected="true"><span>▧</span> WebP Maker</button>
       <button type="button" class="nav-btn" data-view="compressor" data-tab="compressor" aria-selected="false" title="Compress your images to under 1MB."><span>⇲</span> Image Compressor</button>
       <button type="button" class="nav-btn" data-view="builder" data-tab="builder" aria-selected="false"><span>✎</span> Bot Builder</button>
       <button type="button" class="nav-btn" data-view="introduction" data-tab="introduction" aria-selected="false"><span>✦</span> Introduction Editor</button>
+      <button type="button" class="nav-btn" data-view="analytics" data-tab="analytics" aria-selected="false" hidden title="JuicyChat Analytics, from the JuicyChat Analytics Tool installed on this computer"><span>↗</span> Analytics</button>
       <button type="button" class="nav-btn" data-view="settings" data-tab="settings" aria-selected="false"><span>☰</span> Settings</button>
     </nav>
     <div class="jcct-update-actions" role="group" aria-label="Application updates">
@@ -202,10 +203,11 @@
     <section class="view jcct-editor-view" id="view-introduction" aria-label="Introduction Editor">
       <iframe src="../introduction-designer/index.html" title="Introduction Editor" id="jcct-introduction-frame" loading="eager"></iframe>
     </section>
+    <section class="view jcct-editor-view" id="view-analytics" aria-label="Analytics"></section>
     <section class="view" id="view-settings">
       <div class="two-col set-cols">
         <div class="set-col"></div>
-        <div class="set-col"><div class="panel"><div class="panel-head"><div><h3>About this tool</h3><p>Everything here runs on this computer.</p></div></div>
+        <div class="set-col"><div id="jcct-analytics-signin"></div><div class="panel"><div class="panel-head"><div><h3>About this tool</h3><p>Everything here runs on this computer.</p></div></div>
           <p class="micro">Bot templates, saved bots, drafts and the Grammar engine are kept in this app's own data folder. The only thing that ever goes online is the update check, and the Grammar engine download when you press Install.</p></div></div>
       </div>
     </section>

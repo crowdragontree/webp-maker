@@ -32,3 +32,14 @@ body:has(.jcct-editor-view.active) .jcct-main{padding:10px 14px 12px;overflow:hi
 /* the Bot Builder scrolls inside the tool's own panel, so its sticky section titles sit at the top of that panel */
 #bb-form:not(.bb-all)>.bb-sec>summary{top:0}
 #view-builder{padding-bottom:30px}
+/* v1.5.1: the Analytics tab (only when the JuicyChat Analytics Tool is installed) and its sign-in in Settings */
+.jcct-tabs .nav-btn[hidden]{display:none!important}
+.jcct-editor-view#view-analytics iframe{width:100%;height:100%;min-height:640px;flex:1;border:1px solid #3a2a46;background:#0e0b12;border-radius:14px}
+.jcct-an-row{display:flex;gap:8px;margin:10px 0}.jcct-an-row input{flex:1;min-width:0}
+.jcct-an-session{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border:1px solid #3a2a46;border-radius:12px;padding:10px 12px}
+.jcct-an-actions{display:flex;gap:6px}
+.jcct-an-status{display:flex;align-items:center;gap:10px}.jcct-an-status div{display:flex;flex-direction:column;gap:2px}.jcct-an-status small{color:#baa5c9;font-size:11px}
+.jcct-an-dot{width:10px;height:10px;border-radius:50%;background:#8a7a96;flex:0 0 auto}
+.jcct-an-status.signed-in .jcct-an-dot{background:#4fd18b}.jcct-an-status.signed-out .jcct-an-dot{background:#ef6a7c}.jcct-an-status.checking .jcct-an-dot{background:#e7c45a}
+.jcct-an-status.signed-in strong{color:#8eeab7}.jcct-an-status.signed-out strong{color:#f2a9b2}
+.jcct-an-runtime{border:1px solid #6e5420;background:#2a2112;border-radius:12px;padding:10px 12px;margin:8px 0}.jcct-an-runtime b{color:#f3d28a}

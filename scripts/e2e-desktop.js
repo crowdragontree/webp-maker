@@ -25,7 +25,7 @@ async function run({app,win,maker,root}){
   try{
     if(win.webContents.isLoading())await new Promise((resolve,reject)=>{win.webContents.once('did-finish-load',resolve);win.webContents.once('did-fail-load',(_,code,msg)=>reject(Error(`${code}: ${msg}`)));});
     const tabs=await win.webContents.executeJavaScript(`(()=>{
-      const all=[...document.querySelectorAll('.jcct-tabs [data-tab]')].map(b=>b.dataset.tab);
+      const all=[...document.querySelectorAll('.jcct-tabs [data-tab]')].filter(b=>!b.hidden).map(b=>b.dataset.tab);      // the Analytics tab only shows when the JuicyChat Analytics Tool is installed
       document.querySelector('[data-tab="introduction"]').click();
       const isEditor=document.querySelector('#view-introduction').classList.contains('active');
       document.querySelector('[data-tab="webpmaker"]').click();
