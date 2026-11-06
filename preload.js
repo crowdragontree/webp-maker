@@ -74,5 +74,10 @@ contextBridge.exposeInMainWorld('creatorTools',{
   openCrashLog:()=>ipcRenderer.invoke('crashlog:open'),
   installUpdate:()=>ipcRenderer.invoke('updates:install'),
   onUpdateStatus:fn=>ipcRenderer.on('updates:status',(_event,x)=>fn(x)),
-  onSelectTab:fn=>ipcRenderer.on('creator-tools:select-tab',(_event,x)=>fn(x))
+  onSelectTab:fn=>ipcRenderer.on('creator-tools:select-tab',(_event,x)=>fn(x)),
+  // v1.5.1: the Analytics tab (only when the JuicyChat Analytics Tool is installed)
+  analyticsInfo:()=>ipcRenderer.invoke('analytics:info'),
+  analyticsInvoke:(method,args)=>ipcRenderer.invoke('analytics:invoke',method,args),
+  onAnalyticsEvent:fn=>ipcRenderer.on('analytics:event',(_event,x)=>fn(x)),
+  onAnalyticsChanged:fn=>ipcRenderer.on('analytics:changed',(_event,x)=>fn(x))
 });

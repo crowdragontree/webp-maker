@@ -42,6 +42,7 @@ const LANGUAGETOOL=require('./lib/languagetool');
 const GECTOR=require('./lib/gector');
 const LOCALAI=require('./lib/localai');
 const HARPER=require('./lib/harper');
+const AnalyticsHost=require('./lib/analyticsHost');
 // Started by the updater from the downloaded copy: install it, then exit.
 const FINISH_UPDATE=process.argv.find(a=>a.startsWith('--jcct-finish-update='));
 if(FINISH_UPDATE){
@@ -111,7 +112,7 @@ function showCrashLog(){
 }
 app.on('will-quit',()=>crashLog.endSession());
 const lock=app.requestSingleInstanceLock();
-let win=null,maker=null,updater=null,intro=null,quitting=false;
+let win=null,maker=null,updater=null,intro=null,quitting=false,analytics=null;
 if(!lock)app.quit();
 else app.on('second-instance',()=>{if(win&&!win.isDestroyed()){win.show();win.focus();}});
 function send(channel,value){if(win&&!win.isDestroyed()&&!win.webContents.isDestroyed())win.webContents.send(channel,value);}
@@ -135,7 +136,7 @@ function launch(){
     if(isError)crashLog.windowError(d?d.message:message,d?d.sourceId:source,d?d.lineNumber:line);
   });
   win.once('ready-to-show',()=>{win.show();});
-  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  win.webContents.setWindowOpenHandler(({url})=>{try{const u=new URL(url);if(u.protocol==='https:'&&/(^|\.)juicychat\.ai$/i.test(u.hostname))shell.openExternal(u.href);}catch{}return {action:'deny'};});
   win.webContents.on('will-navigate',(event,url)=>{const wanted=new URL('file://'+path.join(__dirname,'renderer','index.html')).href;if(url!==wanted)event.preventDefault();});
   win.on('close',async event=>{
     if(quitting||!conversionActive())return;
@@ -277,6 +278,15 @@ app.whenReady().then(async()=>{
   ipcMain.handle('harper:enable',lt(on=>({ok:true,...HM.setEnabled(on)})));
   ipcMain.handle('harper:check',lt(text=>HM.check(String(text||'').slice(0,20000))));
   app.on('before-quit',()=>{for(const m of [LTM,GM,AM,HM]){try{m.stop();}catch{}}});
+  // ---- v1.5.1: the Analytics tab, shown only when the JuicyChat Analytics Tool is installed (it runs that app's own code, with this app's own sign-in and data)
+  analytics=AnalyticsHost.create({appDataDir:process.env.JAT_APPDATA||app.getPath('appData'),userData:app.getPath('userData'),send,
+    copyText:t=>{clipboard.writeText(String(t).slice(0,2000000));return true;},
+    scanBounds:()=>{try{const {screen}=require('electron');const vis=win&&!win.isDestroyed()&&win.isVisible()&&!win.isMinimized();const d=vis?screen.getDisplayMatching(win.getBounds()):screen.getPrimaryDisplay(),w=d.workArea;return [w.x,w.y,w.width,w.height];}catch{return null;}},
+    log:(what,e)=>crashLog.write(what,e)});
+  if(!E2E)analytics.start();
+  ipcMain.handle('analytics:info',event=>{verifySender(event);analytics.refresh();return analytics.info();});
+  ipcMain.handle('analytics:invoke',(event,method,args)=>{verifySender(event);return analytics.invoke(String(method||''),args);});
+  app.on('before-quit',()=>{try{analytics.dispose();}catch{}});
   ipcMain.handle('creator-tools:copy',(event,text)=>{verifySender(event);clipboard.writeText(String(text==null?'':text).slice(0,2000000));return true;});
   let testRelease;
   if(UPDATE_E2E){
@@ -292,6 +302,7 @@ app.whenReady().then(async()=>{
   ipcMain.handle('updates:install',async event=>{
     verifySender(event);
     if(conversionActive())throw Error('Finish or cancel the current WebP conversion before updating.');
+    if(analytics&&analytics.busy())throw Error('Finish or cancel the current JuicyChat pull (Analytics tab) before updating.');
     if(!updater.available)throw Error('Check for updates first.');
     const choice=await dialog.showMessageBox(win,{type:'question',title:'Install update?',message:`Update Juicy Chat Creator Tools to v${updater.available.version}?`,
       detail:'A verified ZIP from GitHub will replace the portable app after it closes, then restart it. Your Introduction templates and video files stay on your computer.',

@@ -1,4 +1,4 @@
-# Juicy Chat Creator Tools v1.5.0
+# Juicy Chat Creator Tools v1.5.1
 
 **WebP Maker, Image Compressor, Bot Builder, Introduction Editor and Settings in a single Windows/Linux desktop app.**
 
@@ -19,8 +19,13 @@
 - Fully visual drag-and-drop editor with smart snapping, live HTTPS image preview, reusable templates, nested borders, gradients and formatted HTML.
 - 15,000-character limit; Copy Introduction to paste in JuicyChat, or Save and Return to the Bot Builder.
 
+### Analytics (only when the JuicyChat Analytics Tool is installed)
+- Dashboard, Your Performance, JuicyChat Analysis, Engine Library and Settings, run from the installed JuicyChat Analytics Tool's own code, so its updates show here automatically. Hidden when the Analytics Tool is not installed.
+- Its own JuicyChat sign-in and data, separate from the Analytics Tool's. The two apps never pull from JuicyChat at the same time.
+
 ### Settings
 - Grammar checking: Harper is built in; install one Grammar Engine on top (LanguageTool, GECToR or the local AI).
+- JuicyChat sign-in for the Analytics tab (only when the JuicyChat Analytics Tool is installed).
 
 ## Building Windows / Linux releases
 
@@ -28,7 +33,7 @@
 2. Select **Actions → Build Juicy Chat Creator Tools (Windows and Linux)**.
 3. Both Windows and Linux jobs must pass all required source and actual MP4-to-WebP conversion tests.
 4. Download the generated artifacts. Extract the outer GitHub artifact ZIP and obtain `WebP-Maker-Windows-x64.zip` and `WebP-Maker-Linux-x64.zip`.
-5. Publish a **v1.5.0** release with those two inner ZIPs as release assets, using their existing filenames.
+5. Publish a **v1.5.1** release with those two inner ZIPs as release assets, using their existing filenames.
 
 **Compatibility:** The packaged executable remains `WebP-Maker.exe` / `WebP-Maker` solely to support existing WebP Maker installations using the GitHub automatic updater. The application window/title/taskbar name is **Juicy Chat Creator Tools**. Version 1.3.1 is higher than every earlier release. Do not rename the release asset ZIPs or the executable inside the build folders.
 
