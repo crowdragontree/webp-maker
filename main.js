@@ -217,6 +217,34 @@ app.whenReady().then(async()=>{
   ipcMain.handle('builder:templateLogs',event=>{verifySender(event);return builder.logs();});
   ipcMain.handle('builder:closeTemplateLog',(event,id)=>{verifySender(event);return builder.closeLog(id);});
   ipcMain.handle('builder:restore',(event,id)=>{verifySender(event);return builder.restore(id);});
+  // v1.5.2: the Introduction HTML styles are kept in a file in the app's data folder (intro-styles.json, with one .bak copy before each save) as well as in the window's own storage, so they are never lost with it. Import reads the .html files you pick, one style per file.
+  const introStylesFile=()=>path.join(app.getPath('userData'),'intro-styles.json');
+  ipcMain.handle('introstyles:get',event=>{verifySender(event);try{const o=JSON.parse(fs.readFileSync(introStylesFile(),'utf8'));return o&&typeof o==='object'?o:null;}catch{return null;}});
+  ipcMain.handle('introstyles:set',(event,data)=>{
+    verifySender(event);
+    const o=data&&typeof data==='object'?data:{},styles={};
+    for(const [k,v] of Object.entries(o.styles&&typeof o.styles==='object'?o.styles:{}))if(typeof v==='string')styles[String(k).slice(0,80)]=v;
+    const out={styles,sel:typeof o.sel==='string'?o.sel:'',series:o.series&&typeof o.series==='object'?o.series:{}},text=JSON.stringify(out);
+    if(text.length>20e6)throw Error('Too much Introduction style data to save.');
+    const f=introStylesFile(),tmp=f+'.tmp';
+    fs.mkdirSync(path.dirname(f),{recursive:true});
+    try{if(fs.existsSync(f))fs.copyFileSync(f,f+'.bak');}catch{}
+    fs.writeFileSync(tmp,text,'utf8');fs.renameSync(tmp,f);return true;
+  });
+  ipcMain.handle('introstyles:import',async event=>{
+    verifySender(event);
+    const picked=await dialog.showOpenDialog(win,{title:'Import Introduction HTML styles',properties:['openFile','multiSelections'],filters:[{name:'HTML files',extensions:['html','htm','txt']}]});
+    if(picked.canceled||!picked.filePaths.length)return {files:[],errors:[]};
+    const files=[],errors=[];
+    for(const f of picked.filePaths){
+      try{
+        if(fs.statSync(f).size>2e6)throw Error('the file is over 2 MB');
+        const html=fs.readFileSync(f,'utf8');if(!/<[a-z!][^>]*>/i.test(html))throw Error('it has no HTML in it');
+        files.push({name:path.basename(f,path.extname(f)).replace(/_+/g,' ').replace(/\s+/g,' ').trim().slice(0,40)||'Imported style',html});
+      }catch(e){errors.push(`${path.basename(f)}: ${e.message}`);}
+    }
+    return {files,errors};
+  });
   ipcMain.handle('builder:import',async event=>{
     verifySender(event);
     const picked=await dialog.showOpenDialog(win,{title:'Add bot template',properties:['openFile','multiSelections'],filters:[{name:'Text templates',extensions:['txt']}]});
