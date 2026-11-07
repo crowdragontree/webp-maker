@@ -9,7 +9,11 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   const K_STYLES = 'jbs.introStyles', K_SEL = 'jbs.introStyleSel', K_SERIES = 'jbs.introStyleBySeries';
   const rd = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
-  const wr = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage may be unavailable: the preview still works */ } };
+  // styles are also kept in a file in the app's data folder (through the app), so they are never lost with the window's storage
+  const bridge = typeof window !== 'undefined' && window.juicyApp && window.juicyApp.introStylesGet && window.juicyApp.introStylesSet ? window.juicyApp : null;
+  let synced = !bridge, pushT = null;
+  const push = () => { if (!bridge || !synced) return; clearTimeout(pushT); pushT = setTimeout(() => { try { Promise.resolve(bridge.introStylesSet({styles: rd(K_STYLES, {}), sel: rd(K_SEL, ''), series: rd(K_SERIES, {})})).catch(() => {}); } catch {} }, 150); };
+  const wr = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage may be unavailable: the preview still works */ } if (k === K_STYLES || k === K_SEL || k === K_SERIES) push(); };
   const safeUrl = u => /^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? String(u).trim() : '';
 
   // ---- Greeting markdown -> HTML (images, *italic*, **bold**, ***both***, line breaks, ---)
@@ -108,8 +112,9 @@
       <details class="lp-style" data-lp="det"><summary>Introduction style (your own HTML)</summary>
         <div class="lp-row"><label>Style <select data-lp="sel"></select></label><label>Name <input type="text" data-lp="name" placeholder="for example Standalone" maxlength="40"></label></div>
         <textarea data-lp="html" rows="9" spellcheck="false" placeholder="Paste the HTML of one finished Introduction here. The longest block of text in it is replaced with this bot's Introduction. Or write {{intro}}, {{name}} and {{scene}} where they belong."></textarea>
-        <div class="lp-row lp-btns"><button type="button" class="ghost" data-lp="save">Save style</button><button type="button" class="ghost" data-lp="del">Delete style</button></div>
-        <p class="lp-note">Preview only. The Introduction the AI writes stays plain text, inside the template's own limit, and this HTML is never added to the bot, counted or sent to the AI. The [Series 00] tag at the start is left out of the preview. With a saved style applied, <b>Copy Introduction</b> copies this finished HTML code. Styles are saved on this computer and picked again for the same series.</p>
+        <div class="lp-row lp-btns"><button type="button" class="ghost" data-lp="save">Save style</button><button type="button" class="ghost" data-lp="del">Delete style</button><button type="button" class="ghost" data-lp="imp">Import HTML files…</button></div>
+        <p class="lp-note" data-lp="msg" hidden></p>
+        <p class="lp-note">Preview only. The Introduction the AI writes stays plain text, inside the template's own limit, and this HTML is never added to the bot, counted or sent to the AI. The [Series 00] tag at the start is left out of the preview. With a saved style applied, <b>Copy Introduction</b> copies this finished HTML code. Styles are saved on this computer (also in a file in the app's data folder) and picked again for the same series. <b>Import HTML files…</b> adds one style per file, named after the file.</p>
       </details>`;
     const st = S[key] = {el, body: el.querySelector('[data-lp="body"]'), sel: el.querySelector('[data-lp="sel"]'), name: el.querySelector('[data-lp="name"]'), html: el.querySelector('[data-lp="html"]'), data: null, series: null};
     const styles = () => rd(K_STYLES, {});
@@ -126,6 +131,23 @@
     el.querySelector('[data-lp="save"]').addEventListener('click', () => {
       const name = (st.name.value || '').trim() || (st.series ? String(st.series) : 'My style'), all = styles(); all[name] = st.html.value; wr(K_STYLES, all);
       fillSel(name); st.sel.value = name; load();
+    });
+    el.querySelector('[data-lp="imp"]').addEventListener('click', async () => {
+      const msg = el.querySelector('[data-lp="msg"]'), say = t => { msg.textContent = t; msg.hidden = !t; };
+      if (!bridge || !window.juicyApp.introStylesImport) { say('Import is only available inside the app.'); return; }
+      let r; try { r = await window.juicyApp.introStylesImport(); } catch (e) { say('Could not import: ' + (e && e.message || e)); return; }
+      const files = (r && r.files) || [], errs = (r && r.errors) || [];
+      if (!files.length) { say(errs.length ? 'Nothing imported. ' + errs.join(' ') : ''); return; }
+      const all = styles(), map = rd(K_SERIES, {}), baseOf = n => n.replace(/\s+Series\b.*$/i, '').trim(), count = {};
+      for (const f of files) count[baseOf(f.name).toLowerCase()] = (count[baseOf(f.name).toLowerCase()] || 0) + 1;
+      for (const f of files) {
+        all[f.name] = f.html;
+        const b = baseOf(f.name);                                            // "Stepsister Series" is picked for a Stepsister card; two files for one series (Female and Futa) are left for you to pick
+        if (b && count[b.toLowerCase()] === 1) for (const k of new Set([f.name, b, b + ' Series'])) if (!map[k]) map[k] = f.name;
+      }
+      wr(K_STYLES, all); wr(K_SERIES, map);
+      const last = files[files.length - 1].name; fillSel(last); st.sel.value = last; load();
+      say(`Imported ${files.length} style${files.length === 1 ? '' : 's'}: ${files.map(f => f.name).join(', ')}.` + (errs.length ? ' Not imported: ' + errs.join(' ') : ''));
     });
     el.querySelector('[data-lp="del"]').addEventListener('click', () => {
       const n = st.sel.value; if (!n || n === '__new') return; const all = styles(); delete all[n]; wr(K_STYLES, all);
@@ -192,6 +214,19 @@
   }
   // Save a style and apply it (what the Save style button does), for the Introduction Designer's Save and Return
   function applyStyle(name, html) { mount(); const s = S.introduction; if (!s || !s.applyStyle) return false; s.applyStyle(String(name || 'My style').slice(0, 40), String(html || '')); return true; }
+  // bring back the styles kept in the file (a new build, cleared window storage): the file's styles are added to what the window has; then the file follows every change
+  if (bridge) Promise.resolve(bridge.introStylesGet()).then(f => {
+    try {
+      const own = rd(K_STYLES, {}), file = f && f.styles && typeof f.styles === 'object' ? f.styles : {}, merged = Object.assign({}, file, own);
+      if (Object.keys(merged).length !== Object.keys(own).length) {
+        localStorage.setItem(K_STYLES, JSON.stringify(merged));
+        localStorage.setItem(K_SERIES, JSON.stringify(Object.assign({}, f.series || {}, rd(K_SERIES, {}))));
+        if (!rd(K_SEL, '') && f.sel) localStorage.setItem(K_SEL, JSON.stringify(f.sel));
+      }
+    } catch { /* the window's own copy is still used */ }
+    synced = true; push();
+    const st = S.introduction; if (st && st.fillSel) { try { st.fillSel(rd(K_SEL, '')); if (st.sel.value) { st.name.value = st.sel.value; st.html.value = rd(K_STYLES, {})[st.sel.value] || ''; } st.sig = null; if (st.draw) st.draw(); } catch {} }
+  }).catch(() => { synced = true; });
   const API = {md, wrapIntro, stripTag, mount, update, hasHtml, visibleText, finalHtml, baseHtml, applyStyle};
   if (typeof window !== 'undefined') window.LivePreview = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
