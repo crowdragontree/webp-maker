@@ -31,7 +31,8 @@
   </header>
   <main class="main jcct-main" id="jcct-main">
     <section class="view active" id="view-webpmaker">
-<div class="wm-layout">
+<div class="wm-tabs" role="tablist" aria-label="WebP Maker sections"><button id="wm-tab-main" class="on" type="button" role="tab" aria-selected="true">Convert</button><button id="wm-tab-overlay" type="button" role="tab" aria-selected="false">Overlay Settings<i id="wm-tab-dot" hidden></i></button></div>
+        <div class="wm-layout">
 <div class="panel wm-main-panel">
 <div class="wm-compact-toolbar">
 <div class="wm-compact-title"><strong>Clips <span class="wm-count" id="wm-count">(0)</span></strong><span id="wm-order-hint">Drag clips to change their order</span></div>
@@ -144,7 +145,44 @@
 <div class="wm-footnote">Local decoding and ImageMagick encoding. Nothing is uploaded.</div>
 </div>
 </div>
-<div aria-label="Expanded animated WebP preview" aria-modal="true" class="wm-fullscreen" hidden="" id="wm-fullscreen" role="dialog">
+<div id="wm-overlay-page" class="panel wm-overlay-page" hidden>
+          <div class="wm-ov-pagehead"><strong>Overlay Settings</strong><span>A PNG added to every frame of every WebP you convert, in the same place every time</span></div>
+          <div class="wm-overlay" id="wm-overlay">
+              <input id="wm-ov-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
+              <div class="wm-ov-top">
+                <div class="wm-ov-file"><img id="wm-ov-thumb" alt="" hidden><div><b id="wm-ov-name">No overlay chosen</b><small id="wm-ov-meta">Pick a PNG with a transparent background. It is added to every frame, in the same place.</small></div></div>
+                <div class="wm-ov-buttons"><button id="wm-ov-choose" class="secondary" type="button">Choose PNG</button><button id="wm-ov-remove" class="ghost" type="button" hidden>Remove</button></div>
+              </div>
+              <div id="wm-ov-error" class="wm-ov-error" role="alert" hidden></div>
+              <div class="wm-ov-controls" id="wm-ov-controls" hidden>
+                <label class="wm-check wm-ov-on"><input id="wm-ov-on" type="checkbox" checked><b>Add it to every WebP I convert</b></label>
+                <div class="wm-ov-safety"><label class="wm-check"><input id="wm-ov-lock" type="checkbox"><b>Lock position and size</b></label><button id="wm-ov-undo" type="button" disabled title="Put the overlay back where it was before your last move or resize">↶ Undo last move</button></div>
+                <div class="wm-ov-size"><div class="wm-ov-row"><b>Size</b><span><b id="wm-ov-size-val">24%</b> of the frame width</span></div><input id="wm-ov-size" type="range" min="5" max="70" step="1" value="24" aria-label="Overlay size as a percentage of the frame width"></div>
+                <div class="wm-ov-corners" role="group" aria-label="Move the overlay to a corner"><button type="button" data-ovc="tl">Top left</button><button type="button" data-ovc="tr">Top right</button><button type="button" data-ovc="bl">Bottom left</button><button type="button" data-ovc="br">Bottom right</button></div>
+              </div>
+              <div class="wm-bw" id="wm-bw" hidden>
+                <div class="wm-bw-head"><strong>Preview on the bot window</strong><div class="wm-bw-views" role="group" aria-label="Window shape"><button type="button" data-bwv="narrow" class="on" title="The narrower window shape measured on JuicyChat">Narrow window</button><button type="button" data-bwv="wide" title="The wider window shape measured on JuicyChat">Wide window</button><button type="button" data-bwv="full" title="The whole picture, with the safe zone">Whole image</button></div></div>
+                <div class="wm-bw-window">
+                  <div>
+                    <div class="wm-bw-art wm-bw-noframe" id="wm-bw-art"><div class="wm-bw-imgbox" id="wm-bw-imgbox"><img id="wm-bw-img" alt="" draggable="false" hidden><img id="wm-bw-ov" alt="Overlay. Drag it to move it, or use the arrow keys." tabindex="0" draggable="false"><div class="wm-bw-safe" id="wm-bw-safe" hidden></div></div></div>
+                    <div class="wm-bw-who" aria-hidden="true"><i></i><span>Creator box, followers, bio</span></div>
+                  </div>
+                  <div>
+                    <h4 class="wm-bw-title" id="wm-bw-title">Your Bot Name</h4>
+                    <div class="wm-bw-stats" aria-hidden="true"><span>▢ 8</span><span>◩ 0</span><span>{CHR} 13.3k</span></div>
+                    <div class="wm-bw-pills" aria-hidden="true"><span class="n">NSFW</span><span>Brat</span><span>Multiple</span><span>Comedy</span><span>Drama</span></div>
+                    <div class="wm-bw-introlabel">Introduction</div>
+                    <div class="wm-bw-intro" id="wm-bw-intro"></div>
+                  </div>
+                  <div class="wm-bw-bottom" aria-hidden="true"><span>👍 2</span><span>☆ 4</span><span class="c">Start Chat</span></div>
+                </div>
+                <small class="wm-bw-note" id="wm-bw-note"></small>
+                <small class="wm-bw-note" id="wm-bw-size-note"></small>
+                <small class="wm-bw-source"><span id="wm-bw-source">Open a bot in the Bot Builder to show its name and Introduction here</span> <button id="wm-bw-refresh" class="ghost wm-bw-refresh" type="button">↻ Update</button></small>
+              </div>
+            </div>
+        </div>
+        <div aria-label="Expanded animated WebP preview" aria-modal="true" class="wm-fullscreen" hidden="" id="wm-fullscreen" role="dialog">
 <div class="wm-fullscreen-top"><span>Animated WebP preview</span><button class="ghost" id="wm-fullscreen-close" type="button">✕ Close preview (Esc)</button></div>
 <img alt="Expanded animated WebP preview" id="wm-fullscreen-image"/>
 </div>
@@ -244,6 +282,7 @@
   <script src="webmProbe.js"></script>
   <script src="mp4Probe.js"></script>
   <script src="webpTimeline.js"></script>
+  <script src="webpoverlay.js"></script>
   <script src="webpmaker.js"></script>
   <script src="compressor.js"></script>
   <script src="builder.js"></script>

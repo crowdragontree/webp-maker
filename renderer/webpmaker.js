@@ -23,7 +23,9 @@
   let adding=false;
   let cropPointerDrag=null;
   // v1.5.4 batches: the clips are organised into batches and every batch is converted to its own WebP.
-  const MAX_CLIPS=60,MAX_PER_BATCH=30,MAX_BATCHES=30;
+    // v1.5.5: set when the batch functions are missing from this install; the single WebP is then read and saved the way it was before batches
+  let legacy=false;
+const MAX_CLIPS=60,MAX_PER_BATCH=30,MAX_BATCHES=30;
   let batches=[{id:1,name:'Batch 1'}];
   let batchSerial=1;
   let activeBatch=1;              // new files go into this batch
@@ -92,7 +94,7 @@
   const error=m=>{$('wm-error').hidden=false;$('wm-error').textContent=String(m?.message||m||'Conversion failed.');};
   const clearError=()=>{$('wm-error').hidden=true;$('wm-error').textContent='';};
   // hideResult: only the preview panel goes away. clearResult: everything finished is discarded (the settings changed). invalidate: only those batches lose their WebP (their clips changed).
-  function hideResult(){ready=false;overShown=false;shownBatch=null;closeSaveMenu();previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');}
+  function hideResult(){ready=false;overShown=false;shownBatch=null;closeSaveMenu();previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');window.WebpOverlay?.setResult('');}
   function clearResult(){const had=results.size;results.clear();failures.clear();hideResult();if(had)Promise.resolve(api.webpStashClear?.()).catch(()=>{});renderResultChips();}
   function invalidate(...ids){
     let hid=false;
@@ -300,6 +302,7 @@
     return el;
   }
   function render(){
+    scheduleBotFrame();
     $('wm-count').textContent=`(${clips.length})`;
     const host=$('wm-clips');host.replaceChildren();
     const multi=batches.length>1;host.classList.toggle('wm-multi',multi);
@@ -620,6 +623,7 @@
         await drawClip(list[f.clip],f.t,ctx2,settings);
         ctx.globalAlpha=f.blend.alpha;ctx.drawImage(canvas2,0,0);ctx.globalAlpha=1;
       }else await drawClip(list[f.clip],f.t,ctx,settings);
+      if(window.WebpOverlay)window.WebpOverlay.draw(ctx,width,height);   // the overlay goes on after the frame is composed and before it is encoded
       if(cancelled)throw new Error('Conversion cancelled.');
       const data=await (await png(canvas)).arrayBuffer();
       await api.webpFrame(data);
@@ -678,6 +682,7 @@
     let width,height,fps,quality,crop,position;
     try{
       if(list.length>MAX_PER_BATCH)throw new Error(`${batch.name} has ${list.length} clips; a batch holds up to ${MAX_PER_BATCH}.`);
+      if(window.WebpOverlay&&window.WebpOverlay.ready){await window.WebpOverlay.ready();await botRun.catch(()=>{});}   // the saved overlay is loaded, and the preview is not using a clip
       ({width,height}=dimensions(list));
       fps=Number($('wm-fps').value);quality=Number($('wm-quality').value);
       crop=$('wm-crop').value;position=$('wm-crop-position').value;
@@ -720,7 +725,7 @@
       }):[];
       // Numeric IDs only: the backend uses numeric validation for frame keys.
       // the cross-fade and the seconds per picture change the frames, so they are part of the key (whole milliseconds: the backend wants numbers only)
-      const sourceKey=[...list.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections,Math.round(framePlan.crossfade*1000),list.some(c=>c.kind==='image')?Math.round(imageSeconds()*1000):0].join(',');
+      const sourceKey=[...list.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections,Math.round(framePlan.crossfade*1000),list.some(c=>c.kind==='image')?Math.round(imageSeconds()*1000):0,window.WebpOverlay?window.WebpOverlay.key():0].join(',');
       const prepared=await api.webpBegin({width,height,fps,quality,expectedFrames,clipFrames:counts,sourceKey,method:STAGES[stage].method});
       lastSourceFps=prepared.sourceFps||fps;
       if(prepared.cached){
@@ -736,7 +741,16 @@
       const result=await api.webpFinish();
       if(cancelled){outcome='cancelled';return outcome;}
       // the finished WebP is kept under its batch, so converting the next batch cannot remove it
-      try{await api.webpStash(String(batch.id));}catch(e){throw new Error('Could not keep the finished WebP: '+String(e?.message||e).replace(/^Error invoking remote method '[^']*': (Error: )?/,''));}
+      // v1.5.5: if only part of an update is installed (for example a new screen with an older preload.js), one batch still works the old way; several cannot.
+      if(!legacy&&!stashReady())legacy=true;
+      if(!legacy){
+        try{await api.webpStash(String(batch.id));}
+        catch(e){
+          if(filledBatches().length>1)throw new Error('Could not keep the finished WebP: '+String(e?.message||e).replace(/^Error invoking remote method '[^']*': (Error: )?/,''));
+          legacy=true;
+        }
+      }
+      if(legacy&&filledBatches().length>1)throw new Error('This install is missing part of the batch update (preload.js or main.js is older than the rest). Upload all the files of the update in one commit, then try again. One batch alone still converts.');
       const details=[['Method',result.methodLabel||STAGES[stage].name],['Quality',result.sceneQualities?result.sceneQualities.map((q,i)=>`Clip ${i+1}: ${q}`).join(' · '):result.quality],['Resolution',`${result.width} × ${result.height}`],['Framing',crop==='fit'?'Fit':crop==='freeform'?'Freeform (per clip)':`Crop (${crop==='fill'?'custom':crop})`],['Frame rate',result.method==='motion'?`${result.fps} FPS, motion-timed (${result.averageFps} average)`:`${result.fps} FPS`],['Duration',`${result.duration}s`],['Frames',result.frames]];
       const adaptive=Array.isArray(result.sceneQualities)&&result.sceneQualities.length>1;
       const adjustments=[];
@@ -809,10 +823,11 @@
     if(last)await showResult(last.id);
   }
   // Show one batch's finished WebP in the preview (read back from the copy the app kept for that batch).
+  const stashReady=()=>['webpStash','webpStashPreview','webpStashSave','webpStashSaveAll','webpStashDrop','webpStashClear'].every(k=>typeof api[k]==='function');
   async function showResult(id){
     const rec=results.get(id);if(!rec)return;
-    let preview;try{preview=await api.webpStashPreview(String(id));}catch(e){error(e);return;}
-    $('wm-preview').src=preview.data;
+    let preview;try{preview=legacy?await api.webpPreview(false):await api.webpStashPreview(String(id));}catch(e){error(e);return;}
+    $('wm-preview').src=preview.data;window.WebpOverlay?.setResult(preview.data);
     $('wm-preview-placeholder').hidden=true;$('wm-result').hidden=false;$('wm-expand').disabled=false;
     $('wm-result-size').textContent=formatBytes(rec.bytes);
     overShown=false;setBadge(false);
@@ -898,7 +913,7 @@
     if(shownBatch===null||!results.has(shownBatch))return;
     const b=batchById(shownBatch);
     const name=batches.length>1?`${b.name}.webp`:(baseName((batchClips(b.id)[0]||{}).name||'animation').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)||'animation')+'_Animated.webp';
-    try{const r=await api.webpStashSave(String(shownBatch),name);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
+    try{const r=legacy?await api.webpSave(name,false):await api.webpStashSave(String(shownBatch),name);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
   }
   // Every finished batch, each as its own .webp (named after the batch), into one folder you choose. Nothing is overwritten.
   async function saveAll(){
@@ -975,5 +990,27 @@
   $('wm-convert').addEventListener('click',convertAll);
   $('wm-save').addEventListener('click',save);
   $('wm-cancel').addEventListener('click',async()=>{if(!converting)return;cancelled=true;progress({title:'Cancelling',detail:'Discarding temporary frames.',percent:0});try{await api.webpCancel();}catch(e){error(e);}});
+  // v1.8.4 overlay: the preview shows the first frame of the first batch at the size the WebP will have; a change to the overlay discards the finished WebP files
+  let botT=0,botTok=0,botRun=Promise.resolve();
+  function scheduleBotFrame(){
+    const OV=window.WebpOverlay;if(!OV||!OV.hasImage())return;
+    clearTimeout(botT);botT=setTimeout(()=>{botRun=botFrame().catch(()=>{});},250);
+  }
+  async function botFrame(){
+    const OV=window.WebpOverlay;if(!OV||!OV.hasImage()||converting)return;
+    const tok=++botTok,first=filledBatches()[0],list=first?batchClips(first.id):[];
+    if(!list.length){OV.setFrame(null);return;}
+    try{
+      const {width,height}=dimensions(list);
+      const k=Math.min(1,720/Math.max(width,height)),pw=Math.max(2,Math.round(width*k)),ph=Math.max(2,Math.round(height*k));
+      const cv=document.createElement('canvas');cv.width=pw;cv.height=ph;
+      const c2=cv.getContext('2d',{alpha:false});if(!c2)return;
+      c2.imageSmoothingEnabled=true;c2.imageSmoothingQuality='high';
+      await drawClip(list[0],0,c2,{width:pw,height:ph,crop:$('wm-crop').value,position:$('wm-crop-position').value});
+      if(tok!==botTok||converting)return;
+      OV.setFrame({url:cv.toDataURL('image/jpeg',0.88),w:width,h:height});
+    }catch{if(tok===botTok)OV.setFrame(null);}
+  }
+  if(window.WebpOverlay)window.WebpOverlay.onChange(()=>{if(!converting){clearResult();render();}});
   render();
 })();

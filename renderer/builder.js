@@ -1462,6 +1462,18 @@
     await loadList();
   };
   if (typeof window.addEventListener === 'function') window.addEventListener('beforeunload', flushPendingSave);
+  // v1.8.4: the WebP Maker's bot-window preview shows this bot's Scene name and Introduction (the bot that is open in the Bot Builder)
+  window.builderBotPreviewInfo = () => {
+    try {
+      if (!B.v || !B.spec) return null;
+      const c = compose(B.spec, B.v);
+      let html = '';
+      if (window.LivePreview && window.LivePreview.finalHtml) { try { html = String(window.LivePreview.finalHtml(introPayload(c)) || ''); } catch {} }
+      const text = String((c.sec.introduction && c.sec.introduction.body) || '');
+      if (!html && window.LivePreview && window.LivePreview.hasHtml && window.LivePreview.hasHtml(text)) html = text;     // an Introduction that is HTML itself
+      return {scene: String((B.v.header && B.v.header.scene) || ''), text: html === text ? '' : text, html};
+    } catch { return null; }
+  };
   window.builderOnShow = () => { requestAnimationFrame(resizeFields); };
   window.__builderCore = {botJson, exampleText, exampleIssues, withTol, compose, check, blank, autoFormat, prepareValues, selectTemplate, changeTense, renderTense, applyPov, state: B, build, refresh, openIntroductionDesigner, parseBuiltBot, applyBuiltBot};   // for tests
   Promise.resolve().then(() => window.initBuilder()).catch(err => console.error('Bot Builder could not start:', err));

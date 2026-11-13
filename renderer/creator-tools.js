@@ -13,6 +13,7 @@
     for(const section of document.querySelectorAll('.jcct-main>.view'))section.classList.toggle('active',section.id==='view-'+name);
     document.title=`Juicy Chat Creator Tools - ${TABS[name]}`;
     if(name==='builder'&&typeof window.builderOnShow==='function')window.builderOnShow();
+    if(name==='webpmaker'&&window.WebpOverlay)window.WebpOverlay.refresh();
     if(name==='settings'&&window.LT&&typeof window.LT.refresh==='function')window.LT.refresh();
   }
   navs.forEach(btn=>btn.addEventListener('click',()=>switchTo(btn.dataset.tab)));
