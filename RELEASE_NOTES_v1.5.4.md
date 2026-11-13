@@ -12,6 +12,11 @@
   - Changing a batch (adding, removing or moving a clip in it) discards only that batch's finished WebP. Changing a setting (size, crop, FPS, quality, cross-fade, seconds per image) discards all of them, as before.
 - Up to 60 clips in total, up to 30 in one batch.
 
+## Fixed
+- **Bot Builder: the Spelling & Grammar list now matches the underlines in the Greeting.** The Greeting editor shows one markdown text and draws the red (spelling) and blue (grammar) underlines on that whole text, but the Spelling & Grammar window used to read each passage separately, so the local AI listed different things than it underlined, sometimes nothing at all. The window now reads the same text the editor shows, and a fix applied from the list goes into that text. When the Greeting is typed directly (or edited in the passage boxes) nothing changes.
+- **WebP Maker no longer fails when only part of an update is installed.** If the new WebP Maker screen is installed but `preload.js` or `main.js` is still an older version (for example when the files were uploaded to GitHub in separate commits), converting used to stop with "api.webpStash is not a function". Now one batch converts, previews and saves the way it did before batches. Converting several batches in that state stops with a plain message saying that part of the update is missing and to upload all files of the update in one commit.
+- Nothing changes when the whole update is installed.
+
 ## Unchanged
 - With one batch (the default) WebP Maker works exactly as in v1.5.3: one list, one Convert button, one WebP, saved as "<first clip>_Animated.webp".
 - The output settings (size, crop, frame rate, quality, cross-fade) are shared by all batches. The cross-fade joins the clips inside each batch only.
@@ -25,6 +30,3 @@
 
 ## Questions or Problems?
 HMU on PG's server.
-
-## Fixed
-- **Bot Builder: the Spelling & Grammar list now matches the underlines in the Greeting.** The Greeting editor shows one markdown text and draws the red (spelling) and blue (grammar) underlines on that whole text, but the Spelling & Grammar window used to read each passage separately, so the local AI listed different things than it underlined, sometimes nothing at all. The window now reads the same text the editor shows, and a fix applied from the list goes into that text. When the Greeting is typed directly (or edited in the passage boxes) nothing changes.
