@@ -1656,3 +1656,23 @@ body.bg-on .lai-act{bottom:150px}
 .tm-legend .lg-spell{background:rgba(255,92,112,.35);border-bottom:2px solid #ff5c70}
 .tm-legend .lg-gram{background:rgba(78,161,255,.35);border-bottom:2px solid #4ea1ff}
 .tm-legend .lg-word{background:rgba(196,140,255,.3);border-bottom:2px dotted #c48cff}
+
+/* v1.5.4: batches in WebP Maker */
+#view-webpmaker .wm-clips.wm-multi{max-height:330px}
+#view-webpmaker .wm-batch{border:1px solid #4a3558;border-radius:11px;background:#150f1b;padding:6px;display:flex;flex-direction:column;gap:5px}
+#view-webpmaker .wm-batch-active{border-color:#a56ccc;box-shadow:0 0 0 1px #a56ccc55}
+#view-webpmaker .wm-batch.wm-batch-over{border-color:#e0a2ff;background:#241830}
+#view-webpmaker .wm-batch-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#view-webpmaker .wm-batch-name{flex:1 1 130px;min-width:90px;font-weight:700;font-size:12px;padding:5px 8px;border-radius:7px;background:#1d1526;border:1px solid #4a3558;color:inherit}
+#view-webpmaker .wm-batch-info{font-size:10.5px;color:var(--muted);white-space:nowrap}
+#view-webpmaker .wm-batch-state{font-size:10.5px;font-weight:700;white-space:nowrap}
+#view-webpmaker .wm-batch-state[data-kind="ok"]{color:#7fe3a1}
+#view-webpmaker .wm-batch-state[data-kind="bad"]{color:#ff9aa8}
+#view-webpmaker .wm-batch-head button{font-size:11px;padding:4px 9px;min-height:26px}
+#view-webpmaker .wm-batch-head button:disabled{opacity:.4;cursor:default}
+#view-webpmaker .wm-batch-empty{margin:0}
+#view-webpmaker .wm-clip-batch{max-width:112px;font-size:10.5px;padding:2px 4px;border-radius:6px;background:#1d1526;border:1px solid #4a3558;color:inherit}
+#view-webpmaker .wm-batch-results{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+#view-webpmaker .wm-chip{font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid #5b3b78;background:transparent;color:inherit;cursor:pointer}
+#view-webpmaker .wm-chip.wm-chip-on{background:#7b4bb0;border-color:#9d6fd3;color:#fff}
+#view-webpmaker .wm-save-all{margin-top:6px;width:100%;min-height:32px;font-size:12px}

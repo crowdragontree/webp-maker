@@ -22,6 +22,25 @@
   let cancelled=false;
   let adding=false;
   let cropPointerDrag=null;
+  // v1.5.4 batches: the clips are organised into batches and every batch is converted to its own WebP.
+  const MAX_CLIPS=60,MAX_PER_BATCH=30,MAX_BATCHES=30;
+  let batches=[{id:1,name:'Batch 1'}];
+  let batchSerial=1;
+  let activeBatch=1;              // new files go into this batch
+  const results=new Map();        // batch id -> {bytes,details:[[label,value]],note}: the batches that have a finished WebP (kept by the app until the settings or the clips change)
+  const failures=new Map();       // batch id -> why its last conversion failed
+  let shownBatch=null;            // the batch whose WebP the preview shows
+  let run=null;                   // the conversion run in progress: {multi,label,errors,...}
+  const batchIndex=id=>batches.findIndex(b=>b.id===id);
+  const batchById=id=>batches.find(b=>b.id===id)||batches[0];
+  const batchClips=id=>clips.filter(c=>c.batchId===id);
+  const filledBatches=()=>batches.filter(b=>batchClips(b.id).length);
+  const defaultList=()=>{const l=batchClips(activeBatch);return l.length?l:clips;};
+  const regroup=()=>{const order=new Map(batches.map((b,i)=>[b.id,i]));clips=clips.map((c,i)=>({c,i})).sort((x,y)=>((order.get(x.c.batchId)??0)-(order.get(y.c.batchId)??0))||x.i-y.i).map(x=>x.c);};
+  const baseName=n=>String(n||'').replace(/\.[A-Za-z0-9]{1,5}$/,'').replace(/\s+/g,' ').trim().slice(0,60);
+  const uniqueName=base=>{const taken=new Set(batches.map(b=>b.name.toLowerCase()));let n=base,k=1;while(taken.has(n.toLowerCase())){k++;n=`${base} (${k})`;}return n;};
+  const batchSeconds=list=>{const x=crossfadeOn()&&list.length>1&&crossfadeSeconds()>0?crossfadeSeconds():0;return list.reduce((a,c)=>a+clipSeconds(c),0)-x*Math.max(0,list.length-1);};
+  const convertLabel=()=>{const n=filledBatches().length;return n>1?`Convert ${n} batches to WebP`:'Convert to WebP';};
   // What can be added: videos, animated WebP files, and PNG/JPG pictures (a still WebP counts as a picture).
   const kindOf=name=>/\.(mp4|webm)$/i.test(name)?'video':/\.webp$/i.test(name)?'webp':(window.ImageFormats&&window.ImageFormats.isImageName(name))||/\.(png|jpe?g)$/i.test(name)?'image':'';
   const imageSeconds=()=>{const v=Number($o('wm-image-seconds')?.value);return Number.isFinite(v)?v:2;};
@@ -50,7 +69,7 @@
     if(kind==='complete'&&ready)$('wm-save').focus();
     else if(kind==='failed'){$('wm-error').setAttribute('tabindex','-1');$('wm-error').focus();}
   });
-  function notify(mode){
+  function notify(mode,count){
     if(mode!=='complete'&&mode!=='failed')return;
     const done=mode==='complete';
     const notice=$('wm-app-notice');
@@ -59,7 +78,7 @@
     notice.setAttribute('aria-live',done?'polite':'assertive');
     $('wm-app-notice-icon').textContent=done?'✓':'!';
     $('wm-app-notice-title').textContent=done?'WebP Maker: Conversion complete':'WebP Maker: Conversion failed';
-    $('wm-app-notice-message').textContent=done?'Your animated WebP is ready to preview and save.':'Open WebP Maker for the error details and retry options.';
+    $('wm-app-notice-message').textContent=done?(count>1?`Your ${count} animated WebP files are ready to preview and save.`:'Your animated WebP is ready to preview and save.'):'Open WebP Maker for the error details and retry options.';
     $('wm-app-notice-open').textContent=done?'View WebP':'View error';
     notice.hidden=false;
   }
@@ -72,11 +91,24 @@
 
   const error=m=>{$('wm-error').hidden=false;$('wm-error').textContent=String(m?.message||m||'Conversion failed.');};
   const clearError=()=>{$('wm-error').hidden=true;$('wm-error').textContent='';};
-  function clearResult(){ready=false;overShown=false;closeSaveMenu();previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');}
+  // hideResult: only the preview panel goes away. clearResult: everything finished is discarded (the settings changed). invalidate: only those batches lose their WebP (their clips changed).
+  function hideResult(){ready=false;overShown=false;shownBatch=null;closeSaveMenu();previewFullscreen(false);$('wm-expand').disabled=true;$('wm-result').hidden=true;$('wm-preview-placeholder').hidden=false;$('wm-preview').removeAttribute('src');}
+  function clearResult(){const had=results.size;results.clear();failures.clear();hideResult();if(had)Promise.resolve(api.webpStashClear?.()).catch(()=>{});renderResultChips();}
+  function invalidate(...ids){
+    let hid=false;
+    for(const id of ids){
+      if(results.delete(id))Promise.resolve(api.webpStashDrop?.(String(id))).catch(()=>{});
+      failures.delete(id);if(shownBatch===id)hid=true;
+    }
+    if(hid||(overShown&&ids.includes(shownBatch)))hideResult();
+    if(results.size===0)hideResult();
+    renderResultChips();
+  }
   function busy(isBusy){
     converting=!!isBusy;
     $('wm-convert').disabled=isBusy||clips.length===0;
-    $('wm-convert').textContent=isBusy?'Converting...':'Convert to WebP';
+    $('wm-convert').textContent=isBusy?'Converting...':convertLabel();
+    for(const id of ['wm-new-batch','wm-one-each','wm-merge-all','wm-save-all']){const e=$o(id);if(e)e.disabled=isBusy;}
     $('wm-cancel').hidden=!isBusy;
     $('wm-clear').disabled=isBusy;
     $('wm-add').disabled=isBusy;
@@ -87,7 +119,7 @@
   function progress(data){
     if(!converting||!data)return;
     $('wm-progress-wrap').hidden=false;
-    $('wm-progress-title').textContent=data.title||'Converting';
+    $('wm-progress-title').textContent=(run&&run.multi&&run.label?run.label+': ':'')+(data.title||'Converting');
     $('wm-progress-detail').textContent=data.detail||'Working entirely on this computer.';
     const p=Math.min(100,Math.max(0,Number(data.percent)||0));
     $('wm-progress-pct').textContent=p+'%';
@@ -96,23 +128,24 @@
   api.onWebpProgress(progress);
   function untrack(clip){try{clip.decoder?.close();}catch{}try{if(clip.kind==='video'){clip.video.pause();clip.video.removeAttribute('src');clip.video.load();}}catch{}try{if(clip.url)URL.revokeObjectURL(clip.url);}catch{}}
   function resetSize(){
-    const c=clips[0];
-    $('wm-original-size').textContent=c?`${c.width} × ${c.height} px (first clip)`:'Add files to see original dimensions';
+    const c=defaultList()[0];
+    $('wm-original-size').textContent=c?`${c.width} × ${c.height} px (first clip${batches.length>1?' of the selected batch':''})`:'Add files to see original dimensions';
     const opt=$('wm-size').querySelector('option[value="original"]');
     if(opt)opt.textContent=c?`Original (${c.width} × ${c.height})`:'Original dimensions (no resizing)';
     const select=$('wm-crop-preview-clip');
     const previouslySelected=select.value;
     select.replaceChildren();
     for(const clip of clips){
-      const item=document.createElement('option');item.value=String(clip.instanceId);item.textContent=clip.name;
+      const item=document.createElement('option');item.value=String(clip.instanceId);item.textContent=batches.length>1?`${clip.name} (${batchById(clip.batchId).name})`:clip.name;
       select.append(item);
     }
     if(Array.from(select.options).some(x=>x.value===previouslySelected))select.value=previouslySelected;
     updateSizeUI();
   }
-  function dimensions(){
-    if(!clips.length)throw new Error('Add clips first.');
-    return geometry.outputSize(clips[0],$('wm-size').value,$('wm-width').value,$('wm-height').value,$('wm-crop').value);
+  function dimensions(list){
+    list=list||defaultList();
+    if(!list.length)throw new Error('Add clips first.');
+    return geometry.outputSize(list[0],$('wm-size').value,$('wm-width').value,$('wm-height').value,$('wm-crop').value);
   }
   function previewClip(){return clips.find(c=>String(c.instanceId)===$('wm-crop-preview-clip').value)||clips[0]||null;}
   function drawCropPreview(){
@@ -120,7 +153,7 @@
     if(details.hidden||!details.open||!clips.length)return;
     const clip=previewClip();if(!clip)return;
     if(clip.video.readyState<2){clip.video.addEventListener('loadeddata',drawCropPreview,{once:true});return;}
-    let output;try{output=dimensions();}catch{return;}
+    let output;try{output=dimensions(batchClips(clip.batchId));}catch{return;}
     const canvas=$('wm-crop-preview'),freeform=$('wm-crop').value==='freeform';
     canvas.dataset.freeform=String(freeform);
     const aspect=freeform?clip.width/clip.height:output.width/output.height;
@@ -176,14 +209,14 @@
   function cropPointerDown(event){
     if(converting||event.button!==0||$('wm-crop').value!=='freeform')return;
     const clip=previewClip();if(!clip)return;
-    let output;try{output=dimensions();}catch{return;}
+    let output;try{output=dimensions(batchClips(clip.batchId));}catch{return;}
     const point=canvasPoint(event);
     let mode=cropHit(clip,point,output);
     if(mode==='outside'){
       const current=geometry.region(clip.width,clip.height,output.width,output.height,clip.freeformSelection);
       clip.freeformSelection=geometry.move(clip.width,clip.height,output.width,output.height,
         {cx:point.x,cy:point.y,scale:current.scale},0,0);
-      mode='move';clearResult();drawCropPreview();
+      mode='move';invalidate(clip.batchId);drawCropPreview();
     }
     const current=geometry.region(clip.width,clip.height,output.width,output.height,clip.freeformSelection);
     cropPointerDrag={id:event.pointerId,clip,mode,point,start:{cx:current.cx,cy:current.cy,scale:current.scale},output};
@@ -196,7 +229,7 @@
     const point=canvasPoint(event);
     if(!cropPointerDrag||cropPointerDrag.id!==event.pointerId){
       try{
-        const hit=cropHit(clip,point,dimensions());
+        const hit=cropHit(clip,point,dimensions(batchClips(clip.batchId)));
         $('wm-crop-preview').style.cursor=hit==='move'?'move':hit==='outside'?'crosshair':
           (hit==='nw'||hit==='se')?'nwse-resize':'nesw-resize';
       }catch{}
@@ -207,7 +240,7 @@
     clip.freeformSelection=drag.mode==='move'
       ?geometry.move(clip.width,clip.height,size.width,size.height,drag.start,point.x-drag.point.x,point.y-drag.point.y)
       :geometry.resize(clip.width,clip.height,size.width,size.height,drag.start,drag.mode,point.x,point.y);
-    clearResult();drawCropPreview();event.preventDefault();
+    invalidate(cropPointerDrag.clip.batchId);drawCropPreview();event.preventDefault();
   }
   function cropPointerEnd(event){
     if(cropPointerDrag?.id!==event.pointerId)return;
@@ -224,21 +257,21 @@
     if(crop==='freeform'&&clips.length)$('wm-crop-preview-wrap').open=true;
     if(choice==='custom'&&clips.length){
       if(!Number($('wm-width').value)||!Number($('wm-height').value)){
-        $('wm-width').value=clips[0].width;
-        $('wm-height').value=clips[0].height;
+        $('wm-width').value=defaultList()[0].width;
+        $('wm-height').value=defaultList()[0].height;
       }
     }
     if(!clips.length){$('wm-output-dimensions').textContent='Choose files to see output size';return;}
     try{
       const {width,height}=dimensions();
-      $('wm-output-dimensions').textContent=`Output ${width} × ${height} px · ${crop==='fit'?'Whole picture fitted':crop==='freeform'?'Freeform crop per clip':'Cropped to fill'}`;
+      $('wm-output-dimensions').textContent=`Output ${width} × ${height} px · ${crop==='fit'?'Whole picture fitted':crop==='freeform'?'Freeform crop per clip':'Cropped to fill'}${batches.length>1?` · ${batchById(activeBatch).name}`:''}`;
     }catch{$('wm-output-dimensions').textContent='Enter a valid output width and height';}
     drawCropPreview();
   }
   function row(clip,i){
     const el=document.createElement('div');el.className='wm-clip';el.draggable=!converting;el.dataset.index=i;
     const grip=document.createElement('span');grip.className='wm-grip';grip.textContent='⠿';grip.title='Drag to reorder';
-    const n=document.createElement('span');n.className='wm-clip-num';n.textContent=String(i+1).padStart(2,'0');
+    const n=document.createElement('span');n.className='wm-clip-num';n.textContent=String(batchClips(clip.batchId).indexOf(clip)+1).padStart(2,'0');
     const description=document.createElement('div');description.className='wm-clip-copy';
     const name=document.createElement('strong');name.textContent=clip.name;
     const details=document.createElement('small');
@@ -248,13 +281,19 @@
     description.append(name,details);
     const controls=document.createElement('div');controls.className='wm-clip-buttons';
     for(const [glyph,label,disabled,callback] of [
-      ['↑','Move up',i===0,()=>move(i,i-1)],['↓','Move down',i===clips.length-1,()=>move(i,i+1)],['×','Remove clip',false,()=>removeClip(i)]]) {
+      ['↑','Move up',i===0||clips[i-1].batchId!==clip.batchId,()=>move(i,i-1)],['↓','Move down',i===clips.length-1||clips[i+1].batchId!==clip.batchId,()=>move(i,i+1)],['×','Remove clip',false,()=>removeClip(i)]]) {
       const b=document.createElement('button');b.className='ghost';b.type='button';b.textContent=glyph;b.title=label;
       b.setAttribute('aria-label',`${label}: ${clip.name}`);b.disabled=disabled||converting;b.addEventListener('click',callback);controls.append(b);
     }
+    if(batches.length>1){
+      const sel=document.createElement('select');sel.className='wm-clip-batch';sel.title='Move this clip to another batch';sel.setAttribute('aria-label',`Batch for ${clip.name}`);
+      for(const b of batches){const o=document.createElement('option');o.value=String(b.id);o.textContent=b.name;sel.append(o);}
+      sel.value=String(clip.batchId);sel.disabled=converting;sel.draggable=false;
+      sel.addEventListener('change',()=>moveToBatch(i,Number(sel.value)));controls.prepend(sel);
+    }
     el.append(grip,n,description,controls);
     el.addEventListener('dragstart',event=>{if(converting){event.preventDefault();return;}dragIndex=i;el.classList.add('wm-dragging');event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',String(i));});
-    el.addEventListener('dragend',()=>{dragIndex=-1;document.querySelectorAll('.wm-clip').forEach(e=>e.classList.remove('wm-dragging','wm-dragover'));});
+    el.addEventListener('dragend',()=>{dragIndex=-1;document.querySelectorAll('.wm-clip').forEach(e=>e.classList.remove('wm-dragging','wm-dragover'));document.querySelectorAll('.wm-batch').forEach(e=>e.classList.remove('wm-batch-over'));});
     el.addEventListener('dragover',event=>{if(dragIndex<0||converting)return;event.preventDefault();event.dataTransfer.dropEffect='move';el.classList.add('wm-dragover');});
     el.addEventListener('dragleave',()=>el.classList.remove('wm-dragover'));
     el.addEventListener('drop',event=>{if(dragIndex<0||converting)return;event.preventDefault();event.stopPropagation();move(dragIndex,i);dragIndex=-1;});
@@ -262,27 +301,125 @@
   }
   function render(){
     $('wm-count').textContent=`(${clips.length})`;
-    $('wm-clips').replaceChildren();
-    if(!clips.length){const p=document.createElement('div');p.className='wm-empty';p.textContent='Add one clip to convert it, or more to merge them. Videos, animated WebP files and PNG/JPG pictures can be mixed.';$('wm-clips').append(p);}
-    else clips.forEach((c,i)=>$('wm-clips').append(row(c,i)));
+    const host=$('wm-clips');host.replaceChildren();
+    const multi=batches.length>1;host.classList.toggle('wm-multi',multi);
+    if(multi)batches.forEach(b=>host.append(batchSection(b)));
+    else if(!clips.length){const p=document.createElement('div');p.className='wm-empty';p.textContent='Add one clip to convert it, or more to merge them. Videos, animated WebP files and PNG/JPG pictures can be mixed. To get several WebP files, use + New batch and put the clips in different batches.';host.append(p);}
+    else clips.forEach((c,i)=>host.append(row(c,i)));
     $('wm-convert').disabled=converting||clips.length===0;
-    resetSize();updateCombineUI();
+    if(!converting)$('wm-convert').textContent=convertLabel();
+    resetSize();updateCombineUI();updateBatchUI();renderResultChips();
+  }
+  // One block per batch: its name (also the file name of its WebP), its clips, and the buttons that act on the batch.
+  function batchSection(b){
+    const list=batchClips(b.id),sec=document.createElement('div');
+    sec.className='wm-batch'+(b.id===activeBatch?' wm-batch-active':'');sec.dataset.batch=String(b.id);
+    const head=document.createElement('div');head.className='wm-batch-head';
+    const name=document.createElement('input');name.type='text';name.className='wm-batch-name';name.value=b.name;name.maxLength=60;name.disabled=converting;
+    name.setAttribute('aria-label','Batch name. It is also the file name of this batch\'s WebP.');
+    name.addEventListener('focus',()=>setActive(b.id));
+    name.addEventListener('change',()=>{let v=name.value.replace(/\s+/g,' ').trim();if(!v){name.value=b.name;return;}if(batches.some(x=>x!==b&&x.name.toLowerCase()===v.toLowerCase()))v=uniqueName(v);b.name=v;render();});
+    const info=document.createElement('span');info.className='wm-batch-info';
+    const len=list.length?batchSeconds(list):0;
+    info.textContent=`${list.length} clip${list.length===1?'':'s'}${list.length&&len>0?` · about ${len.toFixed(1)} s`:''}`;
+    const state=document.createElement('span');state.className='wm-batch-state';
+    if(results.has(b.id)){state.textContent=`WebP ready · ${formatBytes(results.get(b.id).bytes)}`;state.dataset.kind='ok';}
+    else if(failures.has(b.id)){state.textContent='Not converted';state.title=failures.get(b.id);state.dataset.kind='bad';}
+    const mk=(text,title,cb,cls)=>{const x=document.createElement('button');x.type='button';x.className=cls||'ghost';x.textContent=text;x.title=title;x.disabled=converting;x.addEventListener('click',e=>{e.stopPropagation();cb();});return x;};
+    const add=mk('+ Add files','Add files to this batch',()=>{setActive(b.id);selectFiles();});
+    const conv=mk('Convert this batch','Convert only this batch to its own WebP',()=>convertOne(b.id),'secondary');conv.disabled=converting||!list.length;
+    const del=mk('×','Remove this batch (its clips move to the batch before it)',()=>removeBatch(b.id));del.disabled=converting||batches.length<2;del.setAttribute('aria-label',`Remove ${b.name}`);
+    head.append(name,info,state,add,conv,del);sec.append(head);
+    if(!list.length){const e=document.createElement('div');e.className='wm-empty wm-batch-empty';e.textContent='Empty batch. Add files here, drop clips on it, or pick this batch on a clip.';sec.append(e);}
+    else list.forEach(c=>sec.append(row(c,clips.indexOf(c))));
+    sec.addEventListener('click',()=>{if(activeBatch!==b.id)setActive(b.id);});
+    sec.addEventListener('dragover',event=>{
+      const files=Array.from(event.dataTransfer?.types||[]).includes('Files');
+      if((dragIndex<0&&!files)||converting)return;event.preventDefault();event.dataTransfer.dropEffect=files?'copy':'move';sec.classList.add('wm-batch-over');});
+    sec.addEventListener('dragleave',event=>{if(!sec.contains(event.relatedTarget))sec.classList.remove('wm-batch-over');});
+    sec.addEventListener('drop',event=>{
+      sec.classList.remove('wm-batch-over');if(converting)return;
+      if(dragIndex>=0){event.preventDefault();event.stopPropagation();const from=dragIndex;dragIndex=-1;moveToBatch(from,b.id);return;}
+      if(Array.from(event.dataTransfer?.types||[]).includes('Files'))setActive(b.id);   // the file drop is then handled by the list: files go into this batch
+    });
+    return sec;
+  }
+  function setActive(id){
+    if(!batches.some(b=>b.id===id)||activeBatch===id)return;
+    activeBatch=id;
+    document.querySelectorAll('.wm-batch').forEach(el=>el.classList.toggle('wm-batch-active',Number(el.dataset.batch)===id));
+    resetSize();updateBatchUI();
+  }
+  // The text under "Clips", the batch buttons, and the drop zone say where new files go.
+  function updateBatchUI(){
+    const multi=batches.length>1,hint=$o('wm-order-hint');
+    if(hint)hint.textContent=multi?`New files go into ${batchById(activeBatch).name} · drag clips to reorder or into another batch`:'Drag clips to change their order';
+    const one=$o('wm-one-each');if(one){one.hidden=!(clips.length>1)||multi&&filledBatches().length>=clips.length;one.disabled=converting;}
+    const merge=$o('wm-merge-all');if(merge){merge.hidden=!multi;merge.disabled=converting;}
+    const nb=$o('wm-new-batch');if(nb)nb.disabled=converting||batches.length>=MAX_BATCHES;
+    const copy=document.querySelector('#wm-dropzone .wm-drop-copy small');
+    if(copy&&!copy.dataset.base)copy.dataset.base=copy.textContent;
+    if(copy)copy.textContent=multi?`Files are added to ${batchById(activeBatch).name}. ${copy.dataset.base}`:copy.dataset.base;
+  }
+  function newBatch(){
+    if(converting)return;
+    if(batches.length>=MAX_BATCHES){error(new Error(`Up to ${MAX_BATCHES} batches.`));return;}
+    const b={id:++batchSerial,name:uniqueName(`Batch ${batches.length+1}`)};
+    batches.push(b);activeBatch=b.id;clearError();render();
+  }
+  function removeBatch(id){
+    if(converting||batches.length<2)return;
+    const i=batchIndex(id);if(i<0)return;
+    const into=batches[i>0?i-1:1],list=batchClips(id);
+    if(batchClips(into.id).length+list.length>MAX_PER_BATCH){error(new Error(`${into.name} would hold more than ${MAX_PER_BATCH} clips. Move some clips elsewhere first.`));return;}
+    list.forEach(c=>{c.batchId=into.id;});
+    invalidate(id,into.id);batches.splice(i,1);
+    if(activeBatch===id)activeBatch=into.id;
+    regroup();clearError();render();
+  }
+  // Every clip in a batch of its own (named after the file), for converting many files into many WebP files at once.
+  function oneEach(){
+    if(converting||!(clips.length>1))return;
+    if(clips.length>MAX_BATCHES){error(new Error(`That would make ${clips.length} batches; up to ${MAX_BATCHES}. Put some clips in the same batch.`));return;}
+    clearResult();batches=[];
+    for(const c of clips){const b={id:++batchSerial,name:uniqueName(baseName(c.name)||`Batch ${batches.length+1}`)};batches.push(b);c.batchId=b.id;}
+    activeBatch=batches[0].id;clearError();render();
+  }
+  function mergeAll(){
+    if(converting||batches.length<2)return;
+    if(clips.length>MAX_PER_BATCH){error(new Error(`One batch holds up to ${MAX_PER_BATCH} clips, and you have ${clips.length}.`));return;}
+    clearResult();const keep=batches[0];batches=[keep];clips.forEach(c=>{c.batchId=keep.id;});activeBatch=keep.id;clearError();render();
+  }
+  function moveToBatch(i,batchId){
+    if(converting)return;
+    const c=clips[i];if(!c||!batches.some(b=>b.id===batchId))return;
+    if(c.batchId===batchId){render();return;}
+    if(batchClips(batchId).length>=MAX_PER_BATCH){error(new Error(`A batch holds up to ${MAX_PER_BATCH} clips.`));render();return;}
+    const from=c.batchId;c.batchId=batchId;clips.splice(i,1);clips.push(c);regroup();   // a moved clip goes to the end of its new batch
+    invalidate(from,batchId);clearError();render();
   }
   // The merge settings: "Seconds per image" appears only while the list has a picture; the cross-fade length only while Cross-fade is ticked.
   function updateCombineUI(){
     const w=$o('wm-image-seconds-wrap');if(w)w.hidden=!clips.some(c=>c.kind==='image');
     const on=crossfadeOn();
     const len=$o('wm-crossfade-wrap');if(len)len.hidden=!on;
-    const hint=$o('wm-crossfade-hint');if(hint)hint.textContent=on&&clips.length<=1?'Add a second clip to use the cross-fade.':`Shortest allowed: ${timeline.MIN_CROSSFADE} seconds.`;
+    const biggest=Math.max(0,...batches.map(b=>batchClips(b.id).length));
+    const hint=$o('wm-crossfade-hint');if(hint)hint.textContent=on&&biggest<=1?'Add a second clip to a batch to use the cross-fade.':`Shortest allowed: ${timeline.MIN_CROSSFADE} seconds.`;
     const note=$o('wm-length-note');
     if(note){
-      const x=on&&clips.length>1&&crossfadeSeconds()>0?crossfadeSeconds():0;
-      const total=clips.reduce((a,c)=>a+clipSeconds(c),0)-x*Math.max(0,clips.length-1);
-      note.textContent=clips.length&&total>0?`Total length about ${total.toFixed(1)} s${x?` (each cross-fade overlaps ${x} s)`:''}.`:'';
+      const x=on&&biggest>1&&crossfadeSeconds()>0?crossfadeSeconds():0;
+      const total=clips.length?batchSeconds(defaultList()):0;
+      note.textContent=batches.length>1?(filledBatches().length?`${filledBatches().length} batches, each joined on its own${x?` (each cross-fade overlaps ${x} s)`:''}. Each one is saved as its own WebP.`:''):(clips.length&&total>0?`Total length about ${total.toFixed(1)} s${x?` (each cross-fade overlaps ${x} s)`:''}.`:'');
     }
   }
-  function removeClip(i){if(converting)return;const [c]=clips.splice(i,1);untrack(c);clearError();clearResult();render();}
-  function move(from,to){if(converting||from===to||from<0||to<0||to>=clips.length)return;const [c]=clips.splice(from,1);clips.splice(to,0,c);clearResult();render();}
+  function removeClip(i){if(converting)return;const [c]=clips.splice(i,1);untrack(c);clearError();invalidate(c.batchId);render();}
+  function move(from,to){
+    if(converting||from===to||from<0||to<0||to>=clips.length||from>=clips.length)return;
+    const target=clips[to],fromBatch=clips[from].batchId;
+    if(target.batchId!==fromBatch&&batchClips(target.batchId).length>=MAX_PER_BATCH){error(new Error(`A batch holds up to ${MAX_PER_BATCH} clips.`));return;}
+    const [c]=clips.splice(from,1);c.batchId=target.batchId;clips.splice(to,0,c);regroup();   // dropped on a clip of another batch: it joins that batch at that place
+    invalidate(fromBatch,c.batchId);render();
+  }
   // Some AI video tools produce WebM/VP9 streams with a .mp4 extension and
   // no duration element. Inspect the real container, then give Chromium the
   // matching MIME hint. The original file bytes are not modified or uploaded.
@@ -383,21 +520,21 @@
   }
   async function addFiles(files){
     if(converting||adding||!files.length)return;
-    adding=true;clearError();
+    adding=true;clearError();let added=false;
     try{
       const picked=Array.from(files);
       if(picked.some(f=>!kindOf(f.name)))throw new Error('Choose MP4, WebM or picture files (WebP, PNG, JPG, GIF, BMP, TIFF, AVIF, HEIC, ICO, SVG).');
-      if(clips.length+picked.length>30)throw new Error('Choose up to 30 clips.');
+      if(clips.length+picked.length>MAX_CLIPS)throw new Error(`Choose up to ${MAX_CLIPS} clips.`);
       const known=new Set(clips.map(f=>f.key));
       for(const file of picked){
         const key=[file.name,file.size,file.lastModified].join('|');
         if(known.has(key))continue;
+        if(batchClips(activeBatch).length>=MAX_PER_BATCH)throw new Error(`${batchById(activeBatch).name} is full (${MAX_PER_BATCH} clips in one batch). Add a new batch for the rest.`);
         const kind=kindOf(file.name);
         const clip=kind==='video'?await loadMetadata(file):kind==='webp'?await loadWebpClip(file):await loadImageClip(file);
-        clips.push(clip);known.add(key);
+        clip.batchId=activeBatch;clips.push(clip);known.add(key);added=true;
       }
-      if(clips.length){clearResult();render();}
-    }catch(e){error(e);}finally{adding=false;}
+    }catch(e){error(e);}finally{adding=false;if(added){regroup();invalidate(activeBatch);render();}}
   }
   function selectFiles(){if(converting||adding)return;$('wm-input').click();}
   function drop(event){
@@ -467,7 +604,7 @@
   }
   // Every planned frame in order. A cross-fade frame is the outgoing clip with the incoming clip drawn over it at its blend weight, each on its own black
   // background, so a clip that does not fill the frame fades out to black instead of staying put.
-  async function capture(framePlan,settings,canvas,ctx){
+  async function capture(framePlan,settings,canvas,ctx,list){
     const {width,height}=settings,total=framePlan.frames.length;
     let canvas2=null,ctx2=null;
     if(framePlan.frames.some(f=>f.blend)){
@@ -479,10 +616,10 @@
       if(cancelled)throw new Error('Conversion cancelled.');
       const f=framePlan.frames[k];
       if(f.blend){
-        await drawClip(clips[f.blend.clip],f.blend.t,ctx,settings);
-        await drawClip(clips[f.clip],f.t,ctx2,settings);
+        await drawClip(list[f.blend.clip],f.blend.t,ctx,settings);
+        await drawClip(list[f.clip],f.t,ctx2,settings);
         ctx.globalAlpha=f.blend.alpha;ctx.drawImage(canvas2,0,0);ctx.globalAlpha=1;
-      }else await drawClip(clips[f.clip],f.t,ctx,settings);
+      }else await drawClip(list[f.clip],f.t,ctx,settings);
       if(cancelled)throw new Error('Conversion cancelled.');
       const data=await (await png(canvas)).arrayBuffer();
       await api.webpFrame(data);
@@ -528,32 +665,43 @@
       proceed.focus();
     });
   }
-  async function convert(stageArg){
-    if(converting||clips.length===0)return;
+  // Converts ONE batch to its own WebP: 'ok', 'failed', 'cancelled' or 'skipped'. ctx.multi is true while several batches are converted in one run:
+  // then the messages are collected and shown once at the end, and the preview is shown once at the end.
+  async function convert(stageArg,batchId,ctx){
+    const batch=batchById(batchId),list=batchClips(batch.id);
+    if(converting||list.length===0)return 'skipped';
+    ctx=ctx||{multi:false,errors:[]};
+    const multi=!!ctx.multi;
     const stage=Number.isInteger(stageArg)?stageArg:0;   // a click on Convert passes an event: that is the first method
-    let nextStage=0;
-    dismissNotice();clearError();clearResult();navStatus('idle');
+    let nextStage=0,outcome='failed';
+    dismissNotice();clearError();hideResult();invalidate(batch.id);navStatus('idle');
     let width,height,fps,quality,crop,position;
     try{
-      ({width,height}=dimensions());
+      if(list.length>MAX_PER_BATCH)throw new Error(`${batch.name} has ${list.length} clips; a batch holds up to ${MAX_PER_BATCH}.`);
+      ({width,height}=dimensions(list));
       fps=Number($('wm-fps').value);quality=Number($('wm-quality').value);
       crop=$('wm-crop').value;position=$('wm-crop-position').value;
       if(!Number.isInteger(fps)||fps<19||fps>60)throw new Error('Choose a frame rate from 19 to 60 FPS.');
       if(!Number.isInteger(quality)||quality<50||quality>99)throw new Error('Choose a quality from 50 to 99.');
       if(stage>0){fps=stageFps();quality=80;}
-      const original=clips[0];
-      if(stage===0&&(width!==original.width||height!==original.height)&&!window.confirm(`Change output dimensions from ${original.width} × ${original.height} to ${width} × ${height}?\n\nWebP Maker will never change them automatically.`))return;
-      const mismatched=clips.filter(c=>c.width!==width||c.height!==height);
-      if(stage===0&&crop==='fit'&&mismatched.length&&width===original.width&&height===original.height&&
-        !window.confirm('Some clips have different dimensions. They will be fitted into the first video\'s frame without stretching or cropping. Continue?'))return;
-      if(clips.some(c=>c.kind==='image')&&!(imageSeconds()>=0.25&&imageSeconds()<=60))throw new Error('Seconds per image must be from 0.25 to 60.');
+      const original=list[0];
+      if(stage===0&&(width!==original.width||height!==original.height)&&!ctx.confirmedDims){
+        if(!window.confirm(`${multi?batch.name+': ':''}Change output dimensions from ${original.width} × ${original.height} to ${width} × ${height}?\n\nWebP Maker will never change them automatically.`)){ctx.declined=true;outcome='cancelled';return outcome;}
+        ctx.confirmedDims=true;   // one yes covers every batch of this run
+      }
+      const mismatched=list.filter(c=>c.width!==width||c.height!==height);
+      if(stage===0&&crop==='fit'&&mismatched.length&&width===original.width&&height===original.height&&!ctx.confirmedFit){
+        if(!window.confirm(`${multi?batch.name+': ':''}Some clips have different dimensions. They will be fitted into the first video\'s frame without stretching or cropping. Continue?`)){ctx.declined=true;outcome='cancelled';return outcome;}
+        ctx.confirmedFit=true;
+      }
+      if(list.some(c=>c.kind==='image')&&!(imageSeconds()>=0.25&&imageSeconds()<=60))throw new Error('Seconds per image must be from 0.25 to 60.');
       const fade=crossfadeSeconds();
-      if(crossfadeOn()&&clips.length>1&&!(fade>=timeline.MIN_CROSSFADE))throw new Error(`The cross-fade must be at least ${timeline.MIN_CROSSFADE} seconds.`);
+      if(crossfadeOn()&&list.length>1&&!(fade>=timeline.MIN_CROSSFADE))throw new Error(`The cross-fade must be at least ${timeline.MIN_CROSSFADE} seconds.`);
       let framePlan;
-      try{framePlan=timeline.plan({durations:clips.map(clipSeconds),fps,crossfade:clips.length>1&&fade>0?fade:0});}
+      try{framePlan=timeline.plan({durations:list.map(clipSeconds),fps,crossfade:list.length>1&&fade>0?fade:0});}
       catch(e){
         if(e.clipIndex===undefined)throw e;
-        const c=clips[e.clipIndex];
+        const c=list[e.clipIndex];
         throw new Error(`"${c.name}" is only ${e.have.toFixed(2)} seconds long, but a ${fade} second cross-fade needs ${e.need.toFixed(2)} seconds here (a clip in the middle of the list is faded at both ends, the first and last clip at one end). Use a shorter cross-fade${c.kind==='image'?', raise Seconds per image':''} or a longer clip.`);
       }
       const counts=framePlan.counts;
@@ -566,59 +714,132 @@
       // different videos, a different order, or a different output size.
       const cropModes=['fit','16:9','9:16','3:4','4:3','1:1','fill','freeform'];
       const positions=['center','top','bottom','left','right'];
-      const selections=crop==='freeform'?clips.flatMap(c=>{
+      const selections=crop==='freeform'?list.flatMap(c=>{
         const region=geometry.region(c.width,c.height,width,height,c.freeformSelection);
         return [region.cx,region.cy,region.scale].map(x=>String(Math.round(x*1000000)));
       }):[];
       // Numeric IDs only: the backend uses numeric validation for frame keys.
       // the cross-fade and the seconds per picture change the frames, so they are part of the key (whole milliseconds: the backend wants numbers only)
-      const sourceKey=[...clips.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections,Math.round(framePlan.crossfade*1000),clips.some(c=>c.kind==='image')?Math.round(imageSeconds()*1000):0].join(',');
+      const sourceKey=[...list.map(c=>c.instanceId),cropModes.indexOf(crop),positions.indexOf(position),...selections,Math.round(framePlan.crossfade*1000),list.some(c=>c.kind==='image')?Math.round(imageSeconds()*1000):0].join(',');
       const prepared=await api.webpBegin({width,height,fps,quality,expectedFrames,clipFrames:counts,sourceKey,method:STAGES[stage].method});
       lastSourceFps=prepared.sourceFps||fps;
       if(prepared.cached){
         progress({title:'Reusing decoded video frames',detail:`${prepared.cachedFrames} lossless frames already captured at ${prepared.sourceFps} FPS. No new video decoding.`,percent:54});
       }else{
         const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
-        const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
-        if(!ctx)throw new Error('Unable to initialize the local video canvas.');
-        ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-        await capture(framePlan,{width,height,crop,position},canvas,ctx);
+        const ctx2d=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
+        if(!ctx2d)throw new Error('Unable to initialize the local video canvas.');
+        ctx2d.imageSmoothingEnabled=true;ctx2d.imageSmoothingQuality='high';
+        await capture(framePlan,{width,height,crop,position},canvas,ctx2d,list);
       }
-      if(cancelled)return;
+      if(cancelled){outcome='cancelled';return outcome;}
       const result=await api.webpFinish();
-      if(cancelled)return;
-      const preview=await api.webpPreview();
-      $('wm-preview').src=preview.data;
-      $('wm-preview-placeholder').hidden=true;$('wm-result').hidden=false;$('wm-expand').disabled=false;
-      $('wm-result-size').textContent=formatBytes(result.bytes);
-      overShown=false;setBadge(false);
-      $('wm-size-bar').style.width=`${Math.min(100,100*result.bytes/MAX_BYTES).toFixed(2)}%`;
-      const details=$('wm-result-details');details.replaceChildren();
-      for(const [k,value] of [['Method',result.methodLabel||STAGES[stage].name],['Quality',result.sceneQualities?result.sceneQualities.map((q,i)=>`Clip ${i+1}: ${q}`).join(' · '):result.quality],['Resolution',`${result.width} × ${result.height}`],['Framing',crop==='fit'?'Fit':crop==='freeform'?'Freeform (per clip)':`Crop (${crop==='fill'?'custom':crop})`],['Frame rate',result.method==='motion'?`${result.fps} FPS, motion-timed (${result.averageFps} average)`:`${result.fps} FPS`],['Duration',`${result.duration}s`],['Frames',result.frames]]){
-        const el=document.createElement('div'),title=document.createElement('span'),desc=document.createElement('strong');
-        title.textContent=k;desc.textContent=String(value);el.append(title,desc);details.append(el);
-      }
+      if(cancelled){outcome='cancelled';return outcome;}
+      // the finished WebP is kept under its batch, so converting the next batch cannot remove it
+      try{await api.webpStash(String(batch.id));}catch(e){throw new Error('Could not keep the finished WebP: '+String(e?.message||e).replace(/^Error invoking remote method '[^']*': (Error: )?/,''));}
+      const details=[['Method',result.methodLabel||STAGES[stage].name],['Quality',result.sceneQualities?result.sceneQualities.map((q,i)=>`Clip ${i+1}: ${q}`).join(' · '):result.quality],['Resolution',`${result.width} × ${result.height}`],['Framing',crop==='fit'?'Fit':crop==='freeform'?'Freeform (per clip)':`Crop (${crop==='fill'?'custom':crop})`],['Frame rate',result.method==='motion'?`${result.fps} FPS, motion-timed (${result.averageFps} average)`:`${result.fps} FPS`],['Duration',`${result.duration}s`],['Frames',result.frames]];
       const adaptive=Array.isArray(result.sceneQualities)&&result.sceneQualities.length>1;
       const adjustments=[];
       if(stage>0)adjustments.push(`${STAGES[stage].name}, started over at ${fps} FPS / Q${quality}`);
       if(result.fps!==fps)adjustments.push(`FPS ${fps} → ${result.fps}`);
-      if(adaptive)adjustments.push(`Adaptive quality: ${result.sceneQualities.map((q,i)=>`${clips[i]?.name||'Clip '+(i+1)} Q${q}`).join(', ')}`);
+      if(adaptive)adjustments.push(`Adaptive quality: ${result.sceneQualities.map((q,i)=>`${list[i]?.name||'Clip '+(i+1)} Q${q}`).join(', ')}`);
       else if(result.quality!==quality)adjustments.push(`Quality ${quality} → ${result.quality}`);
-      $('wm-result-note').hidden=!adjustments.length;
-      $('wm-result-note').textContent=adjustments.length?`To stay under 9.99 MB: ${adjustments.join('; ')}. Output dimensions unchanged.`:'';
-      ready=true;
+      results.set(batch.id,{bytes:result.bytes,details,note:adjustments.length?`To stay under 9.99 MB: ${adjustments.join('; ')}. Output dimensions unchanged.`:''});
+      failures.delete(batch.id);
+      if(!multi)await showResult(batch.id);
       progress({title:'Conversion complete',detail:'Animated WebP ready to preview and save.',percent:100});
-      navStatus('complete');notify('complete');
+      if(!multi){navStatus('complete');notify('complete',1);}
+      outcome='ok';
     }catch(e){if(!cancelled){
       const message=String(e?.message||e||''),over=message.includes('still exceeds 9.99 MB');
       const next=over&&stage+1<STAGES.length?STAGES[stage+1]:null;
-      error(over&&!next?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':over?message:e);
-      if(over)await showOversize();
-      navStatus('failed');notify('failed');try{await api.webpCancel();}catch{}
+      const shown=over&&!next?message+' Decoded frames are saved for retry. Adjust quality or FPS and click Convert; no video re-decoding is needed.':over?message:e;
+      const shownText=String(shown?.message||shown||'Conversion failed.');
+      failures.set(batch.id,shownText);
+      if(!multi){error(shown);if(over)await showOversize();navStatus('failed');notify('failed');}
+      try{await api.webpCancel();}catch{}
       if(next&&await askNextStage(stage,next,message))nextStage=stage+1;
-    }}
+      else if(multi)ctx.errors.push(`${batch.name}: ${shownText}`);
+    }else outcome='cancelled';}
     finally{if(cancelled)navStatus('idle');busy(false);render();}
-    if(nextStage)return convert(nextStage);
+    if(nextStage)return convert(nextStage,batchId,ctx);
+    return outcome;
+  }
+  // The Convert button: every batch that has clips is converted, one after the other, each into its own WebP.
+  async function convertAll(){
+    if(converting||adding)return;
+    const ids=filledBatches().map(b=>b.id);if(!ids.length)return;
+    const ctx={multi:ids.length>1,errors:[],confirmedDims:false,confirmedFit:false,declined:false,label:''};
+    run=ctx;cancelled=false;clearResult();dismissNotice();
+    let ok=0,failed=0,stopped=false;
+    try{
+      for(let k=0;k<ids.length;k++){
+        const b=batchById(ids[k]);ctx.label=`Batch ${k+1} of ${ids.length}: ${b.name}`;
+        const o=await convert(0,ids[k],ctx);
+        if(o==='ok')ok++;else if(o==='failed')failed++;
+        if(o==='cancelled'||cancelled||ctx.declined){stopped=true;break;}
+      }
+    }finally{run=null;}
+    await finishRun(ctx,ids.length,ok,failed,stopped);
+  }
+  async function convertOne(id){
+    if(converting||adding||!batchClips(id).length)return;
+    const ctx={multi:false,errors:[],confirmedDims:false,confirmedFit:false,declined:false,label:''};
+    run=ctx;cancelled=false;
+    try{await convert(0,id,ctx);}finally{run=null;}
+    await restoreShown();
+  }
+  // After a run: the last finished WebP is shown, and what went wrong is listed once.
+  async function finishRun(ctx,total,ok,failed,stopped){
+    if(ctx.multi){
+      clearError();
+      if(ctx.errors.length){error(new Error(ctx.errors.join('\n')));$('wm-error').style.whiteSpace='pre-line';}else $('wm-error').style.whiteSpace='';
+      const parts=[`${ok} of ${total} WebP file${total===1?'':'s'} ready`];if(failed)parts.push(`${failed} failed`);if(stopped)parts.push('stopped');
+      $('wm-progress-wrap').hidden=false;
+      $('wm-progress-title').textContent=stopped?'Stopped':ok?'Conversion complete':'Conversion failed';
+      $('wm-progress-detail').textContent=parts.join(' · ')+'.';
+      $('wm-progress-pct').textContent=ok===total?'100%':'';$('wm-progress-bar').style.width=(100*ok/Math.max(1,total))+'%';
+      if(!stopped){if(ok){navStatus('complete');notify('complete',ok);}else{navStatus('failed');notify('failed');}}
+    }
+    await restoreShown();
+  }
+  async function restoreShown(){
+    if(ready||!results.size)return;
+    const last=[...batches].reverse().find(b=>results.has(b.id));
+    if(last)await showResult(last.id);
+  }
+  // Show one batch's finished WebP in the preview (read back from the copy the app kept for that batch).
+  async function showResult(id){
+    const rec=results.get(id);if(!rec)return;
+    let preview;try{preview=await api.webpStashPreview(String(id));}catch(e){error(e);return;}
+    $('wm-preview').src=preview.data;
+    $('wm-preview-placeholder').hidden=true;$('wm-result').hidden=false;$('wm-expand').disabled=false;
+    $('wm-result-size').textContent=formatBytes(rec.bytes);
+    overShown=false;setBadge(false);
+    $('wm-size-bar').style.width=`${Math.min(100,100*rec.bytes/MAX_BYTES).toFixed(2)}%`;
+    const details=$('wm-result-details');details.replaceChildren();
+    for(const [k,value] of rec.details){
+      const el=document.createElement('div'),title=document.createElement('span'),desc=document.createElement('strong');
+      title.textContent=k;desc.textContent=String(value);el.append(title,desc);details.append(el);
+    }
+    $('wm-result-note').hidden=!rec.note;$('wm-result-note').textContent=rec.note||'';
+    shownBatch=id;ready=true;renderResultChips();
+  }
+  // One button per finished batch (pick which WebP the preview shows), and "Save all" once there are two or more.
+  function renderResultChips(){
+    const box=$o('wm-batch-results'),all=$o('wm-save-all'),one=$('wm-save');
+    const many=results.size>1||(batches.length>1&&results.size>0);
+    if(box){
+      box.replaceChildren();box.hidden=!many;
+      for(const b of batches){
+        if(!results.has(b.id))continue;
+        const x=document.createElement('button');x.type='button';x.className='wm-chip'+(b.id===shownBatch&&!overShown?' wm-chip-on':'');
+        x.textContent=`${b.name} · ${formatBytes(results.get(b.id).bytes)}`;x.setAttribute('aria-pressed',String(b.id===shownBatch));x.title=`Show the WebP of ${b.name}`;
+        x.addEventListener('click',()=>{if(!converting&&b.id!==shownBatch)showResult(b.id);});box.append(x);
+      }
+    }
+    if(all){all.hidden=results.size<2;all.textContent=`↓ Save all ${results.size} WebP files…`;all.disabled=converting;}
+    if(one)one.textContent=results.size>1?'↓ Save this WebP':'↓ Save animated WebP';
   }
   // The badge next to the size: green "Under 9.99 MB", or red "Over 9.99 MB" for the too-big file that is kept after a failed conversion.
   function setBadge(over,bytes){
@@ -657,6 +878,7 @@
       b.onclick=()=>{closeSaveMenu();fn();};m.append(b);
     };
     add('Save image as…',save);
+    if(results.size>1)add(`Save all ${results.size} WebP files…`,saveAll);
     add('View larger',()=>previewFullscreen(true));
     document.body.append(m);saveMenu=m;
     const x=e.clientX||e.target.getBoundingClientRect().left+10,y=e.clientY||e.target.getBoundingClientRect().top+10;
@@ -668,8 +890,24 @@
   window.addEventListener('blur',closeSaveMenu);
   async function save(){
     if(!ready||converting)return;
-    const name=(clips[0]?.name||'animation').replace(/\.(mp4|webm|webp|png|jpe?g)$/i,'').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)+'_Animated.webp';
-    try{const r=await api.webpSave(name,overShown);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
+    if(overShown){   // the too-big file kept after a failed single conversion is still the live result
+      const name=(clips[0]?.name||'animation').replace(/\.(mp4|webm|webp|png|jpe?g)$/i,'').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)+'_Animated.webp';
+      try{const r=await api.webpSave(name,true);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
+      return;
+    }
+    if(shownBatch===null||!results.has(shownBatch))return;
+    const b=batchById(shownBatch);
+    const name=batches.length>1?`${b.name}.webp`:(baseName((batchClips(b.id)[0]||{}).name||'animation').replace(/[^A-Za-z0-9 _.-]/g,'_').slice(0,80)||'animation')+'_Animated.webp';
+    try{const r=await api.webpStashSave(String(shownBatch),name);if(r?.saved){$('wm-result-note').hidden=false;$('wm-result-note').textContent='Saved: '+r.path;}}catch(e){error(e);}
+  }
+  // Every finished batch, each as its own .webp (named after the batch), into one folder you choose. Nothing is overwritten.
+  async function saveAll(){
+    if(converting||results.size<2)return;
+    const entries=batches.filter(b=>results.has(b.id)).map(b=>({key:String(b.id),name:b.name}));
+    try{
+      const r=await api.webpStashSaveAll(entries);
+      if(r&&r.saved){const n=$('wm-result-note');n.hidden=false;n.textContent=`Saved ${r.saved} WebP file${r.saved===1?'':'s'} to ${r.dir}: ${r.files.map(f=>f.name).join(', ')}`;}
+    }catch(e){error(e);}
   }
   for(const id of ['wm-image-seconds','wm-crossfade-seconds'])$o(id)?.addEventListener('input',()=>{clearResult();render();});
   $o('wm-crossfade-on')?.addEventListener('change',()=>{clearResult();render();});
@@ -682,7 +920,11 @@
   $('wm-dropzone').addEventListener('drop',drop);
   $('wm-clips').addEventListener('dragover',e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files'))e.preventDefault();});
   $('wm-clips').addEventListener('drop',e=>{if(Array.from(e.dataTransfer?.types||[]).includes('Files'))drop(e);});
-  $('wm-clear').addEventListener('click',()=>{if(converting)return;clips.forEach(untrack);clips=[];clearResult();clearError();render();});
+  $('wm-clear').addEventListener('click',()=>{if(converting)return;clips.forEach(untrack);clips=[];batches=[{id:++batchSerial,name:'Batch 1'}];activeBatch=batches[0].id;clearResult();clearError();render();});
+  $o('wm-new-batch')?.addEventListener('click',newBatch);
+  $o('wm-one-each')?.addEventListener('click',oneEach);
+  $o('wm-merge-all')?.addEventListener('click',mergeAll);
+  $o('wm-save-all')?.addEventListener('click',saveAll);
   $('wm-size').addEventListener('change',()=>{
     clearResult();
     if($('wm-size').value==='custom'&&clips.length){
@@ -720,7 +962,7 @@
   $('wm-freeform-reset').addEventListener('click',()=>{
     if(converting)return;
     const clip=previewClip();if(!clip)return;
-    clip.freeformSelection=null;clearResult();drawCropPreview();
+    clip.freeformSelection=null;invalidate(clip.batchId);drawCropPreview();
   });
   $('wm-expand').addEventListener('click',()=>previewFullscreen(true));
   $('wm-preview').addEventListener('contextmenu',openSaveMenu);
@@ -730,7 +972,7 @@
   $('wm-fullscreen-close').addEventListener('click',()=>previewFullscreen(false));
   $('wm-fullscreen').addEventListener('click',e=>{if(e.target===$('wm-fullscreen'))previewFullscreen(false);});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('wm-fullscreen').hidden)previewFullscreen(false);});
-  $('wm-convert').addEventListener('click',convert);
+  $('wm-convert').addEventListener('click',convertAll);
   $('wm-save').addEventListener('click',save);
   $('wm-cancel').addEventListener('click',async()=>{if(!converting)return;cancelled=true;progress({title:'Cancelling',detail:'Discarding temporary frames.',percent:0});try{await api.webpCancel();}catch(e){error(e);}});
   render();

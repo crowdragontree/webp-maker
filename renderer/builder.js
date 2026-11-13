@@ -224,8 +224,17 @@
   const WORD_KIND = {spelling: 'Spelling', grammar: 'Grammar', wording: 'Wording'};
   function wordNames() { const v = B.v || {}; return [...Object.values(v.names || {}), v.header && v.header.name, v.header && v.header.scene].filter(x => typeof x === 'string' && x); }
   // every piece of text the check reads: the Introduction, the Greeting and the written boxes of the Personality and the Scenario (each one can be fixed from the window)
+  // v1.5.4: the Greeting editor shows ONE markdown text (the passages joined, with the picture lines and the spacer lines). The underlines are drawn on that text, so the
+  // Spelling & Grammar list has to read that same text: before, it read each passage on its own, and the local AI (which answers per text) listed different things than it underlined.
+  // Fixes from the list go into that text the way typing in the editor does. In the passage boxes (or when the markdown text is already the stored text) nothing changes.
+  function greetingMdSource() {
+    const v = B.v; if (!v || !B.spec || B.passMode || (B.editingOver && B.editingOver.greeting)) return null;
+    if (v.over && typeof v.over.greeting === 'string') return null;     // the stored text is what the editor shows
+    return {label: 'Greeting', get: () => String(compose(B.spec, B.v).sec.greeting.body || ''), set: t => { setPath('over.greeting', t); }};
+  }
   function wordSources() {
     const v = B.v, spec = B.spec, out = ageSources().map(src => ({key: /^Intro/.test(src.label) ? 'introduction' : 'greeting', label: src.label, src}));
+    { const md = greetingMdSource(), gi = out.findIndex(s => s.key === 'greeting'); if (md && gi >= 0) out.splice(gi, out.filter(s => s.key === 'greeting').length, {key: 'greeting', label: md.label, src: md}); }
     for (const sec of ['personality', 'scenario']) {
       if (!spec[sec] || !spec[sec].lines || (v.over && typeof v.over[sec] === 'string')) continue;     // the whole section typed as one text is left alone
       const seen = new Set();
