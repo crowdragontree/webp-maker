@@ -191,6 +191,25 @@ app.whenReady().then(async()=>{
     const saved=await dialog.showSaveDialog(win,{title:'Save animated WebP',defaultPath:safeName,filters:[{name:'Animated WebP',extensions:['webp']}]});
     return saved.canceled||!saved.filePath?{canceled:true}:maker.save(saved.filePath,!!allowOver);
   });
+  // v1.5.4 batches: each batch's finished WebP is kept under its batch number; one can be saved on its own, or all of them into a folder
+  ipcMain.handle('webpmaker:stash',(event,key)=>{verifySender(event);return maker.stashResult(key);});
+  ipcMain.handle('webpmaker:stashPreview',(event,key)=>{verifySender(event);return maker.stashPreview(key);});
+  ipcMain.handle('webpmaker:stashDrop',(event,key)=>{verifySender(event);return maker.stashDrop(key);});
+  ipcMain.handle('webpmaker:stashClear',event=>{verifySender(event);return maker.stashClear();});
+  ipcMain.handle('webpmaker:stashSave',async(event,key,suggested)=>{
+    verifySender(event);maker.stashPathOf(key);
+    const safeName=String(suggested||'Animation.webp').replace(/[\\/:*?"<>|]/g,'_').replace(/\.webp$/i,'')+'.webp';
+    const saved=await dialog.showSaveDialog(win,{title:'Save animated WebP',defaultPath:safeName,filters:[{name:'Animated WebP',extensions:['webp']}]});
+    return saved.canceled||!saved.filePath?{canceled:true}:maker.stashSave(key,saved.filePath);
+  });
+  ipcMain.handle('webpmaker:stashSaveAll',async(event,entries)=>{
+    verifySender(event);
+    if(!Array.isArray(entries)||!entries.length)throw Error('There are no finished WebP files to save.');
+    for(const e of entries)maker.stashPathOf(e&&e.key);
+    const picked=await dialog.showOpenDialog(win,{title:`Choose the folder for ${entries.length} WebP files`,properties:['openDirectory','createDirectory']});
+    if(picked.canceled||!picked.filePaths||!picked.filePaths[0])return {canceled:true};
+    return maker.stashSaveAll(picked.filePaths[0],entries);
+  });
   ipcMain.handle('webpmaker:notify',(event,status)=>{
     verifySender(event);if(status!=='complete'&&status!=='failed')return false;
     try{
